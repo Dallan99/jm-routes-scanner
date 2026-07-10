@@ -80,68 +80,416 @@ export type Database = {
         }
         Relationships: []
       }
+      bases_operacionais: {
+        Row: {
+          ativada_em: string | null
+          created_at: string
+          data_operacional: string
+          escala_jm_hora: string | null
+          escala_jm_nome: string | null
+          escala_jm_pacotes: number | null
+          escala_jm_rotas: number | null
+          escala_xpt_hora: string | null
+          escala_xpt_nome: string | null
+          escala_xpt_rotas: number | null
+          escala_xpt_shipments: number | null
+          facility: string | null
+          id: string
+          importado_por: string | null
+          status: Database["public"]["Enums"]["base_status"]
+          total_bairros: number | null
+          total_cidades: number | null
+          total_motoristas: number | null
+          total_pacotes: number | null
+          total_rotas: number | null
+          total_shipments: number | null
+          total_veiculos: number | null
+          transportadora: string | null
+          updated_at: string
+        }
+        Insert: {
+          ativada_em?: string | null
+          created_at?: string
+          data_operacional: string
+          escala_jm_hora?: string | null
+          escala_jm_nome?: string | null
+          escala_jm_pacotes?: number | null
+          escala_jm_rotas?: number | null
+          escala_xpt_hora?: string | null
+          escala_xpt_nome?: string | null
+          escala_xpt_rotas?: number | null
+          escala_xpt_shipments?: number | null
+          facility?: string | null
+          id?: string
+          importado_por?: string | null
+          status?: Database["public"]["Enums"]["base_status"]
+          total_bairros?: number | null
+          total_cidades?: number | null
+          total_motoristas?: number | null
+          total_pacotes?: number | null
+          total_rotas?: number | null
+          total_shipments?: number | null
+          total_veiculos?: number | null
+          transportadora?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ativada_em?: string | null
+          created_at?: string
+          data_operacional?: string
+          escala_jm_hora?: string | null
+          escala_jm_nome?: string | null
+          escala_jm_pacotes?: number | null
+          escala_jm_rotas?: number | null
+          escala_xpt_hora?: string | null
+          escala_xpt_nome?: string | null
+          escala_xpt_rotas?: number | null
+          escala_xpt_shipments?: number | null
+          facility?: string | null
+          id?: string
+          importado_por?: string | null
+          status?: Database["public"]["Enums"]["base_status"]
+          total_bairros?: number | null
+          total_cidades?: number | null
+          total_motoristas?: number | null
+          total_pacotes?: number | null
+          total_rotas?: number | null
+          total_shipments?: number | null
+          total_veiculos?: number | null
+          transportadora?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contagens: {
+        Row: {
+          base_id: string
+          created_at: string
+          data_operacional: string
+          divergencia: number
+          finalizada_em: string | null
+          id: string
+          iniciada_em: string
+          observacoes: string | null
+          total_contado: number
+          total_esperado: number
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          base_id: string
+          created_at?: string
+          data_operacional: string
+          divergencia?: number
+          finalizada_em?: string | null
+          id?: string
+          iniciada_em?: string
+          observacoes?: string | null
+          total_contado?: number
+          total_esperado?: number
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          base_id?: string
+          created_at?: string
+          data_operacional?: string
+          divergencia?: number
+          finalizada_em?: string | null
+          id?: string
+          iniciada_em?: string
+          observacoes?: string | null
+          total_contado?: number
+          total_esperado?: number
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contagens_base_id_fkey"
+            columns: ["base_id"]
+            isOneToOne: false
+            referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contagens_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contagens_rotas_lock: {
+        Row: {
+          base_id: string
+          criado_em: string
+          criado_por: string | null
+          data_operacional: string
+          id: string
+          motorista: string | null
+          nome: string
+          previsto: number | null
+        }
+        Insert: {
+          base_id: string
+          criado_em?: string
+          criado_por?: string | null
+          data_operacional: string
+          id?: string
+          motorista?: string | null
+          nome: string
+          previsto?: number | null
+        }
+        Update: {
+          base_id?: string
+          criado_em?: string
+          criado_por?: string | null
+          data_operacional?: string
+          id?: string
+          motorista?: string | null
+          nome?: string
+          previsto?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contagens_rotas_lock_base_id_fkey"
+            columns: ["base_id"]
+            isOneToOne: false
+            referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devolucoes: {
+        Row: {
+          base_id: string | null
+          base_operacional_id: string | null
+          cancelado: boolean
+          cancelado_em: string | null
+          cancelado_por: string | null
+          created_at: string
+          devolvido_em: string
+          devolvido_por: string
+          escala_id: string | null
+          id: string
+          motivo: Database["public"]["Enums"]["motivo_devolucao"]
+          motorista: string | null
+          observacao: string | null
+          rota: string | null
+          shipment_codigo: string
+          updated_at: string
+        }
+        Insert: {
+          base_id?: string | null
+          base_operacional_id?: string | null
+          cancelado?: boolean
+          cancelado_em?: string | null
+          cancelado_por?: string | null
+          created_at?: string
+          devolvido_em?: string
+          devolvido_por?: string
+          escala_id?: string | null
+          id?: string
+          motivo: Database["public"]["Enums"]["motivo_devolucao"]
+          motorista?: string | null
+          observacao?: string | null
+          rota?: string | null
+          shipment_codigo: string
+          updated_at?: string
+        }
+        Update: {
+          base_id?: string | null
+          base_operacional_id?: string | null
+          cancelado?: boolean
+          cancelado_em?: string | null
+          cancelado_por?: string | null
+          created_at?: string
+          devolvido_em?: string
+          devolvido_por?: string
+          escala_id?: string | null
+          id?: string
+          motivo?: Database["public"]["Enums"]["motivo_devolucao"]
+          motorista?: string | null
+          observacao?: string | null
+          rota?: string | null
+          shipment_codigo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devolucoes_base_id_fkey"
+            columns: ["base_id"]
+            isOneToOne: false
+            referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devolucoes_base_operacional_id_fkey"
+            columns: ["base_operacional_id"]
+            isOneToOne: false
+            referencedRelation: "bases_operacionais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devolucoes_escala_id_fkey"
+            columns: ["escala_id"]
+            isOneToOne: false
+            referencedRelation: "escalas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       escalas: {
         Row: {
           bairro: string | null
-          base_id: string
+          base_id: string | null
+          base_operacional_id: string | null
+          cep: string | null
           cidade: string | null
+          cluster: string | null
           created_at: string
           data_referencia: string
+          devolvido: boolean
+          devolvido_em: string | null
+          devolvido_motivo:
+            | Database["public"]["Enums"]["motivo_devolucao"]
+            | null
+          distancia: number | null
           driver: string | null
+          duracao: number | null
+          facility_id: string | null
           giro: string | null
           id: string
+          importacao_id: string | null
           importado_por: string | null
           modal: string | null
+          nro_rota: string | null
+          numero: string | null
+          ocupacao: number | null
+          ordem: number | null
+          order_id_veiculo: string | null
           otimizada: string | null
           pacotes: number | null
+          parada: string | null
           paradas: number | null
           placa: string | null
           placa_troca: string | null
           planejada: string | null
+          recebido: boolean
+          recebido_em: string | null
+          recebido_por: string | null
+          referencias: string | null
           roteiro: string | null
+          rua: string | null
+          shipment: string | null
+          spr: number | null
           tipo: string | null
+          transportadora: string | null
+          triado: boolean
+          triado_em: string | null
+          triado_por: string | null
           vaga: string | null
         }
         Insert: {
           bairro?: string | null
-          base_id: string
+          base_id?: string | null
+          base_operacional_id?: string | null
+          cep?: string | null
           cidade?: string | null
+          cluster?: string | null
           created_at?: string
           data_referencia?: string
+          devolvido?: boolean
+          devolvido_em?: string | null
+          devolvido_motivo?:
+            | Database["public"]["Enums"]["motivo_devolucao"]
+            | null
+          distancia?: number | null
           driver?: string | null
+          duracao?: number | null
+          facility_id?: string | null
           giro?: string | null
           id?: string
+          importacao_id?: string | null
           importado_por?: string | null
           modal?: string | null
+          nro_rota?: string | null
+          numero?: string | null
+          ocupacao?: number | null
+          ordem?: number | null
+          order_id_veiculo?: string | null
           otimizada?: string | null
           pacotes?: number | null
+          parada?: string | null
           paradas?: number | null
           placa?: string | null
           placa_troca?: string | null
           planejada?: string | null
+          recebido?: boolean
+          recebido_em?: string | null
+          recebido_por?: string | null
+          referencias?: string | null
           roteiro?: string | null
+          rua?: string | null
+          shipment?: string | null
+          spr?: number | null
           tipo?: string | null
+          transportadora?: string | null
+          triado?: boolean
+          triado_em?: string | null
+          triado_por?: string | null
           vaga?: string | null
         }
         Update: {
           bairro?: string | null
-          base_id?: string
+          base_id?: string | null
+          base_operacional_id?: string | null
+          cep?: string | null
           cidade?: string | null
+          cluster?: string | null
           created_at?: string
           data_referencia?: string
+          devolvido?: boolean
+          devolvido_em?: string | null
+          devolvido_motivo?:
+            | Database["public"]["Enums"]["motivo_devolucao"]
+            | null
+          distancia?: number | null
           driver?: string | null
+          duracao?: number | null
+          facility_id?: string | null
           giro?: string | null
           id?: string
+          importacao_id?: string | null
           importado_por?: string | null
           modal?: string | null
+          nro_rota?: string | null
+          numero?: string | null
+          ocupacao?: number | null
+          ordem?: number | null
+          order_id_veiculo?: string | null
           otimizada?: string | null
           pacotes?: number | null
+          parada?: string | null
           paradas?: number | null
           placa?: string | null
           placa_troca?: string | null
           planejada?: string | null
+          recebido?: boolean
+          recebido_em?: string | null
+          recebido_por?: string | null
+          referencias?: string | null
           roteiro?: string | null
+          rua?: string | null
+          shipment?: string | null
+          spr?: number | null
           tipo?: string | null
+          transportadora?: string | null
+          triado?: boolean
+          triado_em?: string | null
+          triado_por?: string | null
           vaga?: string | null
         }
         Relationships: [
@@ -150,6 +498,99 @@ export type Database = {
             columns: ["base_id"]
             isOneToOne: false
             referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "escalas_base_operacional_id_fkey"
+            columns: ["base_operacional_id"]
+            isOneToOne: false
+            referencedRelation: "bases_operacionais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "escalas_importacao_id_fkey"
+            columns: ["importacao_id"]
+            isOneToOne: false
+            referencedRelation: "importacoes_escala"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      importacoes_escala: {
+        Row: {
+          arquivada_em: string | null
+          arquivada_por: string | null
+          arquivo_nome: string | null
+          ativa: boolean
+          base_id: string
+          created_at: string
+          data_operacional: string
+          id: string
+          importado_em: string
+          importado_por: string | null
+          total_linhas: number
+          total_motoristas: number
+          total_pacotes: number
+          total_rotas: number
+          updated_at: string
+          versao: number
+        }
+        Insert: {
+          arquivada_em?: string | null
+          arquivada_por?: string | null
+          arquivo_nome?: string | null
+          ativa?: boolean
+          base_id: string
+          created_at?: string
+          data_operacional: string
+          id?: string
+          importado_em?: string
+          importado_por?: string | null
+          total_linhas?: number
+          total_motoristas?: number
+          total_pacotes?: number
+          total_rotas?: number
+          updated_at?: string
+          versao?: number
+        }
+        Update: {
+          arquivada_em?: string | null
+          arquivada_por?: string | null
+          arquivo_nome?: string | null
+          ativa?: boolean
+          base_id?: string
+          created_at?: string
+          data_operacional?: string
+          id?: string
+          importado_em?: string
+          importado_por?: string | null
+          total_linhas?: number
+          total_motoristas?: number
+          total_pacotes?: number
+          total_rotas?: number
+          updated_at?: string
+          versao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "importacoes_escala_arquivada_por_fkey"
+            columns: ["arquivada_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "importacoes_escala_base_id_fkey"
+            columns: ["base_id"]
+            isOneToOne: false
+            referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "importacoes_escala_importado_por_fkey"
+            columns: ["importado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -241,12 +682,14 @@ export type Database = {
           base_id: string | null
           codigo_bipado: string
           created_at: string
+          data_operacional: string | null
           id: string
           ip: string | null
           mensagem: string | null
           operador_id: string
           resultado: Database["public"]["Enums"]["recebimento_resultado"]
           rota_id: string | null
+          stage: Database["public"]["Enums"]["bip_stage"]
           tempo_desde_ultima_ms: number | null
           user_agent: string | null
           volume_id: string | null
@@ -255,12 +698,14 @@ export type Database = {
           base_id?: string | null
           codigo_bipado: string
           created_at?: string
+          data_operacional?: string | null
           id?: string
           ip?: string | null
           mensagem?: string | null
           operador_id: string
           resultado: Database["public"]["Enums"]["recebimento_resultado"]
           rota_id?: string | null
+          stage?: Database["public"]["Enums"]["bip_stage"]
           tempo_desde_ultima_ms?: number | null
           user_agent?: string | null
           volume_id?: string | null
@@ -269,12 +714,14 @@ export type Database = {
           base_id?: string | null
           codigo_bipado?: string
           created_at?: string
+          data_operacional?: string | null
           id?: string
           ip?: string | null
           mensagem?: string | null
           operador_id?: string
           resultado?: Database["public"]["Enums"]["recebimento_resultado"]
           rota_id?: string | null
+          stage?: Database["public"]["Enums"]["bip_stage"]
           tempo_desde_ultima_ms?: number | null
           user_agent?: string | null
           volume_id?: string | null
@@ -404,6 +851,85 @@ export type Database = {
           },
         ]
       }
+      shipments: {
+        Row: {
+          bairro: string | null
+          base_operacional_id: string
+          cidade: string | null
+          created_at: string
+          id: string
+          motorista: string | null
+          pacotes: number | null
+          placa: string | null
+          rota: string | null
+          shipment_id: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          bairro?: string | null
+          base_operacional_id: string
+          cidade?: string | null
+          created_at?: string
+          id?: string
+          motorista?: string | null
+          pacotes?: number | null
+          placa?: string | null
+          rota?: string | null
+          shipment_id: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bairro?: string | null
+          base_operacional_id?: string
+          cidade?: string | null
+          created_at?: string
+          id?: string
+          motorista?: string | null
+          pacotes?: number | null
+          placa?: string | null
+          rota?: string | null
+          shipment_id?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipments_base_operacional_id_fkey"
+            columns: ["base_operacional_id"]
+            isOneToOne: false
+            referencedRelation: "bases_operacionais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_bases: {
+        Row: {
+          base_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          base_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          base_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_bases_base_id_fkey"
+            columns: ["base_id"]
+            isOneToOne: false
+            referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -424,8 +950,11 @@ export type Database = {
       }
       volumes: {
         Row: {
+          base_id: string | null
           codigo: string
+          contagem_id: string | null
           created_at: string
+          data_operacional: string | null
           id: string
           recebido: boolean
           recebido_em: string | null
@@ -433,10 +962,16 @@ export type Database = {
           rota_id: string
           sequencia: number
           total: number
+          triado: boolean
+          triado_em: string | null
+          triado_por: string | null
         }
         Insert: {
+          base_id?: string | null
           codigo: string
+          contagem_id?: string | null
           created_at?: string
+          data_operacional?: string | null
           id?: string
           recebido?: boolean
           recebido_em?: string | null
@@ -444,10 +979,16 @@ export type Database = {
           rota_id: string
           sequencia: number
           total: number
+          triado?: boolean
+          triado_em?: string | null
+          triado_por?: string | null
         }
         Update: {
+          base_id?: string | null
           codigo?: string
+          contagem_id?: string | null
           created_at?: string
+          data_operacional?: string | null
           id?: string
           recebido?: boolean
           recebido_em?: string | null
@@ -455,8 +996,25 @@ export type Database = {
           rota_id?: string
           sequencia?: number
           total?: number
+          triado?: boolean
+          triado_em?: string | null
+          triado_por?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "volumes_base_id_fkey"
+            columns: ["base_id"]
+            isOneToOne: false
+            referencedRelation: "bases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "volumes_contagem_id_fkey"
+            columns: ["contagem_id"]
+            isOneToOne: false
+            referencedRelation: "contagens"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "volumes_rota_id_fkey"
             columns: ["rota_id"]
@@ -508,6 +1066,11 @@ export type Database = {
       }
     }
     Functions: {
+      get_allowed_bases: { Args: { _user_id: string }; Returns: string[] }
+      has_base_access: {
+        Args: { _base_id: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -518,6 +1081,16 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "supervisor" | "operador" | "gerente"
+      base_status: "aguardando" | "ativa" | "arquivada" | "erro"
+      bip_stage: "recebimento" | "triagem"
+      motivo_devolucao:
+        | "cliente_ausente"
+        | "endereco_nao_localizado"
+        | "recusado"
+        | "avaria"
+        | "zona_de_risco"
+        | "outros"
+        | "comercio_fechado"
       recebimento_resultado:
         | "ok"
         | "duplicado"
@@ -534,6 +1107,7 @@ export type Database = {
         | "recebida_completa"
         | "cancelada"
         | "encerrada"
+        | "em_triagem"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -662,6 +1236,17 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "supervisor", "operador", "gerente"],
+      base_status: ["aguardando", "ativa", "arquivada", "erro"],
+      bip_stage: ["recebimento", "triagem"],
+      motivo_devolucao: [
+        "cliente_ausente",
+        "endereco_nao_localizado",
+        "recusado",
+        "avaria",
+        "zona_de_risco",
+        "outros",
+        "comercio_fechado",
+      ],
       recebimento_resultado: [
         "ok",
         "duplicado",
@@ -679,6 +1264,7 @@ export const Constants = {
         "recebida_completa",
         "cancelada",
         "encerrada",
+        "em_triagem",
       ],
     },
   },

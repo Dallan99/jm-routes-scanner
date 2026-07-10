@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +26,8 @@ import {
   Settings,
   ShieldCheck,
   LogOut,
+  Boxes,
+  RotateCcw,
 } from "lucide-react";
 import { JmLogo, JmWordmark } from "@/components/jm-logo";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { meuPerfil } from "@/lib/recebimento.functions";
 import { useClock, formatDateTimeBR } from "@/lib/use-clock";
 import { toast } from "sonner";
+import { BaseOperacionalProvider, useBaseOperacional } from "@/lib/base-operacional-context";
+import { SeletorBaseDia } from "@/components/base-operacional-selector";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 const INACTIVITY_MS = 4 * 60 * 60 * 1000; // 4 horas
 
@@ -44,6 +49,12 @@ function useInactivityLogout() {
     const reset = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(async () => {
+        try {
+          const { registrarAudit } = await import("@/lib/audit.functions");
+          await registrarAudit({ data: { acao: "logout.inatividade", entidade: "auth" } });
+        } catch {
+          /* ignore */
+        }
         await supabase.auth.signOut();
         toast.info("Sessão expirada por inatividade. Faça login novamente.");
         window.location.href = "/auth";
@@ -72,13 +83,16 @@ type NavItem = {
 type Role = "admin" | "supervisor" | "gerente" | "operador";
 
 const NAV_OPERACIONAL: NavItem[] = [
+  { title: "Bases", to: "/bases", icon: Boxes },
   { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard, roles: ["admin", "supervisor", "gerente"] },
   { title: "Recebimento", to: "/recebimento", icon: ScanBarcode },
   { title: "Triagem", to: "/triagem", icon: PackageSearch },
   { title: "Contagem", to: "/contagem", icon: ClipboardList },
+  { title: "Devoluções", to: "/devolucoes", icon: RotateCcw },
+  { title: "Inventário", to: "/inventario", icon: ClipboardList },
 ];
 const NAV_GESTAO: NavItem[] = [
-  { title: "Histórico", to: "/historico", icon: History },
+  { title: "Histórico", to: "/historico", icon: History, roles: ["admin", "supervisor", "gerente"] },
   { title: "Gerencial", to: "/gerencial", icon: TrendingUp, roles: ["admin", "supervisor", "gerente"] },
 ];
 const NAV_ADMIN: NavItem[] = [
@@ -98,17 +112,19 @@ export function AppShell() {
   useInactivityLogout();
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
-        <AppSidebar roles={roles} />
-        <div className="flex-1 flex flex-col min-w-0">
-          <TopBar nome={perfilQuery.data?.profile?.nome ?? null} roles={roles} />
-          <main className="flex-1 min-w-0">
-            <Outlet />
-          </main>
+    <BaseOperacionalProvider>
+      <SidebarProvider>
+        <div className="min-h-screen flex w-full bg-background">
+          <AppSidebar roles={roles} />
+          <div className="flex-1 flex flex-col min-w-0">
+            <TopBar nome={perfilQuery.data?.profile?.nome ?? null} roles={roles} />
+            <main className="flex-1 min-w-0">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </BaseOperacionalProvider>
   );
 }
 
@@ -168,7 +184,9 @@ function AppSidebar({ roles }: { roles: Array<Role> }) {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border h-14 flex items-center justify-center px-3">
-        {collapsed ? <JmLogo size={28} /> : <JmWordmark />}
+        <Link to="/inicio" title="Voltar para o início" className="flex items-center justify-center w-full">
+          {collapsed ? <JmLogo size={28} /> : <JmWordmark />}
+        </Link>
       </SidebarHeader>
       <SidebarContent>
         {renderGroup("Operação", NAV_OPERACIONAL)}
@@ -190,6 +208,8 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const now = useClock(1000);
+  const { base, diaOperacional, limpar } = useBaseOperacional();
+  const [trocarOpen, setTrocarOpen] = useState(false);
   const principal = roles.includes("admin")
     ? "Administrador"
     : roles.includes("gerente")
@@ -199,6 +219,12 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
     : "Operador";
 
   async function logout() {
+    try {
+      const { registrarAudit } = await import("@/lib/audit.functions");
+      await registrarAudit({ data: { acao: "logout", entidade: "auth" } });
+    } catch {
+      /* segue o logout mesmo sem auditoria */
+    }
     await qc.cancelQueries();
     qc.clear();
     await supabase.auth.signOut();
@@ -215,7 +241,17 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
       <div className="ml-auto flex items-center gap-3">
         <div className="text-right leading-tight">
           <div className="text-sm font-medium">{nome ?? "—"}</div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{principal}</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            {principal}
+            {base && diaOperacional && (
+              <>
+                {" · "}
+                <span className="font-mono normal-case">
+                  {base.codigo} · {new Date(diaOperacional + "T00:00:00").toLocaleDateString("pt-BR")}
+                </span>
+              </>
+            )}
+          </div>
         </div>
         <div className="w-8 h-8 rounded-full brand-gradient text-white flex items-center justify-center text-xs font-bold uppercase">
           {(nome ?? "?").slice(0, 2)}
@@ -224,6 +260,23 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
           <LogOut className="w-4 h-4" />
         </Button>
       </div>
+
+      <Dialog open={trocarOpen} onOpenChange={setTrocarOpen}>
+        <DialogContent className="max-w-3xl p-0 bg-transparent border-none shadow-none">
+          <SeletorBaseDia
+            titulo="Trocar Base Operacional"
+            descricao="Escolha a Base e o Dia com que você quer trabalhar."
+            onSelecionar={() => setTrocarOpen(false)}
+          />
+          {base && (
+            <div className="text-center pb-4">
+              <Button variant="ghost" size="sm" onClick={() => { limpar(); setTrocarOpen(false); }}>
+                Limpar seleção
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }

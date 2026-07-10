@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -17,7 +17,7 @@ import {
 } from "recharts";
 import {
   Activity, AlertOctagon, AlertTriangle, CheckCircle2, Clock, Filter, Gauge,
-  Package, PackageCheck, PackageSearch, RefreshCcw, Timer, TrendingUp, Truck, UserCog,
+  Package, PackageCheck, PackageSearch, RefreshCcw, Timer, TrendingUp, Truck, Tv, UserCog,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -104,9 +104,16 @@ function DashboardPage() {
             {" · "}atualizado {dadosQuery.dataUpdatedAt ? new Date(dadosQuery.dataUpdatedAt).toLocaleTimeString("pt-BR") : "—"}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ["dashboard"] })}>
-          <RefreshCcw className="w-4 h-4 mr-2" /> Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link to="/tv/dashboard">
+            <Button variant="default" size="sm">
+              <Tv className="w-4 h-4 mr-2" /> Modo TV
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ["dashboard"] })}>
+            <RefreshCcw className="w-4 h-4 mr-2" /> Atualizar
+          </Button>
+        </div>
       </header>
 
       {/* Filtros */}
