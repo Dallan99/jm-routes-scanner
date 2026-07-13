@@ -75,7 +75,14 @@ export const getBaseAtiva = createServerFn({ method: "GET" })
 export const getBaseDoDia = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { dataRef?: string }) =>
-    z.object({ dataRef: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(input),
+    z
+      .object({
+        dataRef: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data, context }): Promise<BaseAtiva | null> => {
     const { supabase } = context;
@@ -107,10 +114,16 @@ export const listarHistoricoBases = createServerFn({ method: "GET" })
     const ids = Array.from(new Set((data ?? []).map((b: any) => b.importado_por).filter(Boolean)));
     const nomes = new Map<string, string>();
     if (ids.length) {
-      const { data: perfis } = await supabase.from("profiles").select("id, nome").in("id", ids as string[]);
+      const { data: perfis } = await supabase
+        .from("profiles")
+        .select("id, nome")
+        .in("id", ids as string[]);
       for (const p of perfis ?? []) nomes.set(p.id, p.nome ?? "—");
     }
-    return (data ?? []).map((b: any) => ({ ...b, importado_por_nome: nomes.get(b.importado_por) ?? null }));
+    return (data ?? []).map((b: any) => ({
+      ...b,
+      importado_por_nome: nomes.get(b.importado_por) ?? null,
+    }));
   });
 
 // ============ Importar Escala JM ============
@@ -142,7 +155,8 @@ function validarJM(linhas: z.infer<typeof linhaJMSchema>[]): ValidacaoErro[] {
     const n = i + 2; // linha do excel considerando header
     if (!l.driver) erros.push({ linha: n, campo: "driver", motivo: "Motorista obrigatório." });
     if (!l.placa) erros.push({ linha: n, campo: "placa", motivo: "Placa obrigatória." });
-    if (l.pacotes == null || l.pacotes <= 0) erros.push({ linha: n, campo: "pacotes", motivo: "Pacotes deve ser > 0." });
+    if (l.pacotes == null || l.pacotes <= 0)
+      erros.push({ linha: n, campo: "pacotes", motivo: "Pacotes deve ser > 0." });
     const chave = `${l.planejada ?? ""}|${l.driver ?? ""}`;
     if (chaves.has(chave)) erros.push({ linha: n, campo: "planejada", motivo: "Linha duplicada." });
     chaves.add(chave);
@@ -155,7 +169,10 @@ export const importarEscalaJM = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        dataRef: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        dataRef: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
         arquivoNome: z.string().min(1).max(200),
         facility: z.string().nullish(),
         transportadora: z.string().nullish(),
@@ -241,9 +258,11 @@ function validarXPT(linhas: z.infer<typeof linhaXPTSchema>[]): ValidacaoErro[] {
   const ids = new Set<string>();
   linhas.forEach((l, i) => {
     const n = i + 2;
-    if (!l.shipment_id) erros.push({ linha: n, campo: "shipment_id", motivo: "Shipment ID obrigatório." });
+    if (!l.shipment_id)
+      erros.push({ linha: n, campo: "shipment_id", motivo: "Shipment ID obrigatório." });
     if (!l.rota) erros.push({ linha: n, campo: "rota", motivo: "Rota obrigatória." });
-    if (ids.has(l.shipment_id)) erros.push({ linha: n, campo: "shipment_id", motivo: "Shipment duplicado." });
+    if (ids.has(l.shipment_id))
+      erros.push({ linha: n, campo: "shipment_id", motivo: "Shipment duplicado." });
     ids.add(l.shipment_id);
   });
   return erros;
@@ -254,7 +273,10 @@ export const importarEscalaXPT = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        dataRef: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        dataRef: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
         arquivoNome: z.string().min(1).max(200),
         linhas: z.array(linhaXPTSchema).max(10000),
       })
@@ -370,4 +392,42 @@ export const ativarBase = createServerFn({ method: "POST" })
     });
 
     return { ok: true };
+  });
+
+// ============ contextoBaseOperacional (guarda de UI) ============
+// Usado pelo RequireBaseOperacional para decidir se o usuário pode
+// escolher base (admin) ou se está preso a profiles.base_id.
+
+export type ContextoBaseOperacional = {
+  isAdmin: boolean;
+  ativo: boolean;
+  baseFixa: { id: string; codigo: string; nome: string; cidade: string | null } | null;
+};
+
+export const contextoBaseOperacional = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<ContextoBaseOperacional> => {
+    const { supabase, userId } = context;
+    const [{ data: prof }, { data: roles }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("base_id, ativo, bases(id, codigo, nome, cidade)")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", userId),
+    ]);
+    const rolesArr = (roles ?? []).map((r) => r.role as string);
+    const isAdmin = rolesArr.includes("admin");
+    const ativo = prof?.ativo !== false;
+    let baseFixa: ContextoBaseOperacional["baseFixa"] = null;
+    if (prof?.base_id && prof.bases) {
+      const b = prof.bases as { id: string; codigo: string; nome: string; cidade: string | null };
+      baseFixa = {
+        id: b.id ?? prof.base_id,
+        codigo: b.codigo,
+        nome: b.nome,
+        cidade: b.cidade ?? null,
+      };
+    }
+    return { isAdmin, ativo, baseFixa };
   });
