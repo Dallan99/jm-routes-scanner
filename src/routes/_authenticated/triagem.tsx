@@ -42,7 +42,12 @@ import {
   Copy,
 } from "lucide-react";
 import { toast } from "sonner";
-import { abrirRelatorio, baixarCSV, montarLinhasTriagemRota, type TriagemLinhaImpressao } from "@/lib/relatorio";
+import {
+  abrirRelatorio,
+  baixarCSV,
+  montarLinhasTriagemRota,
+  type TriagemLinhaImpressao,
+} from "@/lib/relatorio";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,9 +80,21 @@ function TriagemComHeader() {
       <div className="border-b bg-muted/30 px-4 md:px-6 py-2 flex items-center gap-3 flex-wrap text-xs">
         <span className="font-display font-semibold text-sm">Triagem</span>
         <span className="text-muted-foreground">·</span>
-        <span>Base: <b>{base?.nome ?? "—"}</b>{base?.codigo && <span className="font-mono text-muted-foreground"> ({base.codigo})</span>}</span>
+        <span>
+          Base: <b>{base?.nome ?? "—"}</b>
+          {base?.codigo && (
+            <span className="font-mono text-muted-foreground"> ({base.codigo})</span>
+          )}
+        </span>
         <span className="text-muted-foreground">·</span>
-        <span>Dia Operacional: <b className="font-mono">{diaOperacional ? new Date(diaOperacional + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</b></span>
+        <span>
+          Dia Operacional:{" "}
+          <b className="font-mono">
+            {diaOperacional
+              ? new Date(diaOperacional + "T00:00:00").toLocaleDateString("pt-BR")
+              : "—"}
+          </b>
+        </span>
         <Button
           size="sm"
           variant="outline"
@@ -147,8 +164,7 @@ function TriagemPage() {
 
   const detalheQuery = useQuery({
     queryKey: ["triagem-pendentes", baseId, dataOperacional, rotaDetalhe],
-    queryFn: () =>
-      pendentesFn({ data: { baseId, dataOperacional, rota: rotaDetalhe! } }),
+    queryFn: () => pendentesFn({ data: { baseId, dataOperacional, rota: rotaDetalhe! } }),
     enabled: !!rotaDetalhe,
     refetchInterval: rotaDetalhe ? 5000 : false,
   });
@@ -373,7 +389,10 @@ function TriagemPage() {
   const imprimirDetalheRota = useCallback(
     (
       rota: string,
-      detalhe: { pendentes: Array<{ shipment: string; cidade: string | null }>; triados: Array<{ shipment: string; cidade: string | null }> },
+      detalhe: {
+        pendentes: Array<{ shipment: string; cidade: string | null }>;
+        triados: Array<{ shipment: string; cidade: string | null }>;
+      },
     ) => {
       const linhas = montarLinhasTriagemRota(detalhe);
       const totalRota = linhas.length;
@@ -458,8 +477,7 @@ function TriagemPage() {
   const mm = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
-  const flashClass =
-    flash === "ok" ? "scan-flash-ok" : flash === "error" ? "scan-flash-error" : "";
+  const flashClass = flash === "ok" ? "scan-flash-ok" : flash === "error" ? "scan-flash-error" : "";
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
@@ -477,22 +495,13 @@ function TriagemPage() {
           value={pendentes.toLocaleString("pt-BR")}
           tone="warning"
         />
-        <Kpi
-          icon={Percent}
-          label="Conclusão"
-          value={`${pct}%`}
-          tone="primary"
-        />
+        <Kpi icon={Percent} label="Conclusão" value={`${pct}%`} tone="primary" />
         <Kpi
           icon={Package}
           label="Meus hoje"
           value={(resumo.data?.meusHoje ?? 0).toLocaleString("pt-BR")}
         />
-        <Kpi
-          icon={Timer}
-          label="Tempo da sessão"
-          value={`${hh}:${mm}:${ss}`}
-        />
+        <Kpi icon={Timer} label="Tempo da sessão" value={`${hh}:${mm}:${ss}`} />
       </div>
       <Progress value={pct} className="h-2" />
 
@@ -555,10 +564,7 @@ function TriagemPage() {
                   <DropdownMenuItem onClick={baixarCsv}>
                     <Download className="w-4 h-4 mr-2" /> Baixar CSV
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={imprimirRotaSelecionada}
-                    disabled={!rotaSelecionada}
-                  >
+                  <DropdownMenuItem onClick={imprimirRotaSelecionada} disabled={!rotaSelecionada}>
                     <Printer className="w-4 h-4 mr-2" />
                     Imprimir rota{rotaSelecionada ? ` ${rotaSelecionada}` : " selecionada"}
                   </DropdownMenuItem>
@@ -589,7 +595,11 @@ function TriagemPage() {
               autoFocus
               spellCheck={false}
               autoComplete="off"
-              placeholder={rotaSelecionada ? `Rota ${rotaSelecionada} — aguardando leitura…` : "Selecione uma rota para começar…"}
+              placeholder={
+                rotaSelecionada
+                  ? `Rota ${rotaSelecionada} — aguardando leitura…`
+                  : "Selecione uma rota para começar…"
+              }
               className="h-20 md:h-24 text-3xl md:text-4xl font-mono tracking-widest text-center"
               disabled={!rotaSelecionada}
             />
@@ -600,9 +610,7 @@ function TriagemPage() {
               Sessão: <span className="text-success font-semibold">{sessionOk} OK</span> ·{" "}
               <span className="text-destructive font-semibold">{sessionErr} erros</span>
             </span>
-            {last?.hora && (
-              <span>Última: {new Date(last.hora).toLocaleTimeString("pt-BR")}</span>
-            )}
+            {last?.hora && <span>Última: {new Date(last.hora).toLocaleTimeString("pt-BR")}</span>}
           </div>
         </Card>
 
@@ -697,9 +705,7 @@ function UltimoCard({ last }: { last: TriagemResult | null }) {
   if (!last || !status) {
     return (
       <Card className="p-6 border-dashed flex items-center justify-center text-center">
-        <div className="text-sm text-muted-foreground">
-          A última leitura aparecerá aqui.
-        </div>
+        <div className="text-sm text-muted-foreground">A última leitura aparecerá aqui.</div>
       </Card>
     );
   }
@@ -933,7 +939,12 @@ function RotaDetalheDialog({
                 </div>
                 <div className="flex items-center gap-1">
                   {data.pendentes.length > 0 && (
-                    <Button size="sm" variant="ghost" onClick={copiar} className="h-7 gap-1 text-xs">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={copiar}
+                      className="h-7 gap-1 text-xs"
+                    >
                       <Copy className="w-3 h-3" /> Copiar
                     </Button>
                   )}
@@ -955,9 +966,14 @@ function RotaDetalheDialog({
                   </div>
                 ) : (
                   data.pendentes.map((p) => (
-                    <div key={p.shipment} className="px-3 py-1.5 text-sm flex items-center justify-between gap-2 min-w-0">
+                    <div
+                      key={p.shipment}
+                      className="px-3 py-1.5 text-sm flex items-center justify-between gap-2 min-w-0"
+                    >
                       <span className="font-mono truncate">{p.shipment}</span>
-                      <span className="text-xs text-muted-foreground truncate max-w-[45%] text-right">{p.cidade ?? ""}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[45%] text-right">
+                        {p.cidade ?? ""}
+                      </span>
                     </div>
                   ))
                 )}
@@ -972,9 +988,14 @@ function RotaDetalheDialog({
                   <div className="p-3 text-xs text-muted-foreground">Nenhum triado ainda.</div>
                 ) : (
                   data.triados.map((p) => (
-                    <div key={p.shipment} className="px-3 py-1.5 text-sm flex items-center justify-between gap-2 min-w-0">
+                    <div
+                      key={p.shipment}
+                      className="px-3 py-1.5 text-sm flex items-center justify-between gap-2 min-w-0"
+                    >
                       <span className="font-mono truncate">{p.shipment}</span>
-                      <span className="text-xs text-muted-foreground truncate max-w-[45%] text-right">{p.cidade ?? ""}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[45%] text-right">
+                        {p.cidade ?? ""}
+                      </span>
                     </div>
                   ))
                 )}
@@ -983,11 +1004,7 @@ function RotaDetalheDialog({
           </div>
         )}
         <div className="mt-4 flex items-center justify-end gap-2 border-t pt-3">
-          <Button
-            onClick={onImprimir}
-            disabled={!podeImprimir}
-            className="gap-2"
-          >
+          <Button onClick={onImprimir} disabled={!podeImprimir} className="gap-2">
             <Printer className="w-4 h-4" /> Imprimir rota
           </Button>
         </div>
@@ -995,7 +1012,6 @@ function RotaDetalheDialog({
     </Dialog>
   );
 }
-
 
 function Row({
   r,
