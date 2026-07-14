@@ -85,12 +85,7 @@ type Role = "admin" | "supervisor" | "gerente" | "operador";
 
 const NAV_OPERACIONAL: NavItem[] = [
   { title: "Bases", to: "/bases", icon: Boxes },
-  {
-    title: "Dashboard",
-    to: "/dashboard",
-    icon: LayoutDashboard,
-    roles: ["admin", "supervisor", "gerente"],
-  },
+  { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard, roles: ["admin", "supervisor", "gerente"] },
   { title: "Recebimento", to: "/recebimento", icon: ScanBarcode },
   { title: "Triagem", to: "/triagem", icon: PackageSearch },
   { title: "Contagem", to: "/contagem", icon: ClipboardList },
@@ -99,18 +94,8 @@ const NAV_OPERACIONAL: NavItem[] = [
   { title: "Inventário", to: "/inventario", icon: ClipboardList },
 ];
 const NAV_GESTAO: NavItem[] = [
-  {
-    title: "Histórico",
-    to: "/historico",
-    icon: History,
-    roles: ["admin", "supervisor", "gerente"],
-  },
-  {
-    title: "Gerencial",
-    to: "/gerencial",
-    icon: TrendingUp,
-    roles: ["admin", "supervisor", "gerente"],
-  },
+  { title: "Histórico", to: "/historico", icon: History, roles: ["admin", "supervisor", "gerente"] },
+  { title: "Gerencial", to: "/gerencial", icon: TrendingUp, roles: ["admin", "supervisor", "gerente"] },
 ];
 const NAV_ADMIN: NavItem[] = [
   { title: "Usuários", to: "/usuarios", icon: Users, roles: ["admin"] },
@@ -156,11 +141,7 @@ function AppSidebar({ roles }: { roles: Array<Role> }) {
     if (!visible.length) return null;
     return (
       <SidebarGroup>
-        {!collapsed && (
-          <SidebarGroupLabel className="text-sidebar-foreground/50 uppercase tracking-[0.14em] text-[10px]">
-            {label}
-          </SidebarGroupLabel>
-        )}
+        {!collapsed && <SidebarGroupLabel className="text-sidebar-foreground/50 uppercase tracking-[0.14em] text-[10px]">{label}</SidebarGroupLabel>}
         <SidebarGroupContent>
           <SidebarMenu>
             {visible.map((item) => {
@@ -205,11 +186,7 @@ function AppSidebar({ roles }: { roles: Array<Role> }) {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border h-14 flex items-center justify-center px-3">
-        <Link
-          to="/inicio"
-          title="Voltar para o início"
-          className="flex items-center justify-center w-full"
-        >
+        <Link to="/inicio" title="Voltar para o início" className="flex items-center justify-center w-full">
           {collapsed ? <JmLogo size={28} /> : <JmWordmark />}
         </Link>
       </SidebarHeader>
@@ -220,7 +197,9 @@ function AppSidebar({ roles }: { roles: Array<Role> }) {
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
         {!collapsed && (
-          <div className="text-[10px] text-sidebar-foreground/50 px-2 py-1">v1.0 · Iteração 1</div>
+          <div className="text-[10px] text-sidebar-foreground/50 px-2 py-1">
+            v1.0 · Iteração 1
+          </div>
         )}
       </SidebarFooter>
     </Sidebar>
@@ -236,10 +215,10 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
   const principal = roles.includes("admin")
     ? "Administrador"
     : roles.includes("gerente")
-      ? "Gerente"
-      : roles.includes("supervisor")
-        ? "Supervisor"
-        : "Operador";
+    ? "Gerente"
+    : roles.includes("supervisor")
+    ? "Supervisor"
+    : "Operador";
 
   async function logout() {
     try {
@@ -270,8 +249,7 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
               <>
                 {" · "}
                 <span className="font-mono normal-case">
-                  {base.codigo} ·{" "}
-                  {new Date(diaOperacional + "T00:00:00").toLocaleDateString("pt-BR")}
+                  {base.codigo} · {new Date(diaOperacional + "T00:00:00").toLocaleDateString("pt-BR")}
                 </span>
               </>
             )}
@@ -294,14 +272,7 @@ function TopBar({ nome, roles }: { nome: string | null; roles: string[] }) {
           />
           {base && (
             <div className="text-center pb-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  limpar();
-                  setTrocarOpen(false);
-                }}
-              >
+              <Button variant="ghost" size="sm" onClick={() => { limpar(); setTrocarOpen(false); }}>
                 Limpar seleção
               </Button>
             </div>
