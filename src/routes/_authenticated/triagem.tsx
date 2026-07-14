@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -8,7 +8,9 @@ import {
   ultimasTriagens,
   triagemRotasDoDia,
   triagemShipmentsPendentes,
+  localizarShipmentTriagem,
   type TriagemResult,
+  type LocalizacaoShipmentTriagem,
 } from "@/lib/triagem.functions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,9 @@ import {
   Copy,
   ArrowLeft,
   FileSpreadsheet,
+  Search,
+  Loader2,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -154,6 +159,7 @@ function TriagemPage() {
   const resumoFn = useServerFn(triagemResumoDia);
   const rotasFn = useServerFn(triagemRotasDoDia);
   const pendentesFn = useServerFn(triagemShipmentsPendentes);
+  const localizarFn = useServerFn(localizarShipmentTriagem);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastRef = useRef<{ codigo: string; ts: number } | null>(null);
   const [codigo, setCodigo] = useState("");
@@ -164,6 +170,10 @@ function TriagemPage() {
   const [rotaSelecionada, setRotaSelecionada] = useState<string | null>(null);
   const [rotaDetalhe, setRotaDetalhe] = useState<string | null>(null);
   const [modoRota, setModoRota] = useState(false);
+  const [shipmentConsulta, setShipmentConsulta] = useState("");
+  const [resultadoConsulta, setResultadoConsulta] = useState<LocalizacaoShipmentTriagem | null>(
+    null,
+  );
 
   const detalheQuery = useQuery({
     queryKey: ["triagem-pendentes", baseId, dataOperacional, rotaDetalhe],
@@ -281,6 +291,8 @@ function TriagemPage() {
       qc.invalidateQueries({ queryKey: ["triagem-ultimas"] });
       qc.invalidateQueries({ queryKey: ["triagem-resumo"] });
       qc.invalidateQueries({ queryKey: ["triagem-rotas"] });
+      qc.invalidateQueries({ queryKey: ["triagem-rota-operacao"] });
+      qc.invalidateQueries({ queryKey: ["triagem-pendentes"] });
       const isOk = res.resultado === "ok";
       const isWarn = res.resultado === "duplicado";
       if (isOk) {
@@ -321,6 +333,35 @@ function TriagemPage() {
       inputRef.current?.focus();
     },
   });
+
+  const localizarMutation = useMutation({
+    mutationFn: (shipment: string) => localizarFn({ data: { baseId, dataOperacional, shipment } }),
+    onSuccess: (resultado) => {
+      setResultadoConsulta(resultado);
+      if (resultado.encontrado) {
+        toast.success(`Shipment pertence à rota ${resultado.rota}.`);
+      } else {
+        beepWarn();
+        toast.warning(resultado.mensagem);
+      }
+    },
+    onError: (erro: unknown) => {
+      setResultadoConsulta(null);
+      beepError();
+      toast.error(erro instanceof Error ? erro.message : "Falha ao localizar shipment.");
+    },
+  });
+
+  const consultarShipment = (valor: string) => {
+    const normalizado = valor.replace(/[^0-9A-Za-z]/g, "");
+    if (normalizado.length < 3) {
+      toast.warning("Bipe ou digite um shipment válido.");
+      return;
+    }
+    setShipmentConsulta(normalizado);
+    setResultadoConsulta(null);
+    localizarMutation.mutate(normalizado);
+  };
 
   const submit = useCallback(
     (cod: string) => {
@@ -519,6 +560,85 @@ function TriagemPage() {
           </div>
           <Progress value={pct} className="h-2" />
 
+          <Card className="p-4 md:p-5">
+            <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+              <div>
+                <h2 className="font-display text-sm uppercase tracking-wider font-semibold">
+                  Localizar rota pelo shipment
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Bipe a etiqueta para descobrir a rota na base e no dia operacional atuais.
+                </p>
+              </div>
+              <Search className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <form
+              className="flex flex-col sm:flex-row gap-2"
+              onSubmit={(evento) => {
+                evento.preventDefault();
+                consultarShipment(shipmentConsulta);
+              }}
+            >
+              <Input
+                value={shipmentConsulta}
+                onChange={(evento) => {
+                  setShipmentConsulta(evento.target.value);
+                  setResultadoConsulta(null);
+                }}
+                placeholder="Bipe ou digite o ID (shipment)…"
+                className="font-mono h-12 text-base"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <Button type="submit" className="h-12 gap-2" disabled={localizarMutation.isPending}>
+                {localizarMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                Localizar
+              </Button>
+            </form>
+
+            {resultadoConsulta && (
+              <div
+                className={`mt-3 rounded-md border p-3 flex items-center justify-between gap-3 flex-wrap ${
+                  resultadoConsulta.encontrado
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-warning/40 bg-warning/5"
+                }`}
+              >
+                {resultadoConsulta.encontrado ? (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Shipment</div>
+                      <div className="font-mono font-semibold">{resultadoConsulta.shipment}</div>
+                      <div className="mt-1 text-sm">
+                        Rota <b className="font-mono text-lg">{resultadoConsulta.rota}</b>
+                        {resultadoConsulta.cidade ? ` · ${resultadoConsulta.cidade}` : ""}
+                        {resultadoConsulta.triado && (
+                          <Badge variant="secondary" className="ml-2">
+                            Já triado
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <Button onClick={() => abrirRota(resultadoConsulta.rota)} className="gap-2">
+                      Abrir rota <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <div>
+                    <div className="font-mono font-semibold">{resultadoConsulta.shipment}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {resultadoConsulta.mensagem}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
           {/* Seletor de rota */}
           <RotasSelector
             rotas={rotas.data ?? []}
@@ -683,7 +803,7 @@ function TriagemPage() {
               </div>
             </Card>
 
-            <UltimoCard last={last} />
+            <UltimoCard last={last} progressoRota={rotaAtual} />
           </div>
 
           <Card className="p-4 md:p-6">
@@ -805,13 +925,33 @@ function Kpi({
   );
 }
 
-function UltimoCard({ last }: { last: TriagemResult | null }) {
-  const status = useMemo(() => {
+function UltimoCard({
+  last,
+  progressoRota,
+}: {
+  last: TriagemResult | null;
+  progressoRota: RotaResumo | null;
+}) {
+  const progressoAtual =
+    last?.rota && progressoRota?.rota === last.rota.codigo
+      ? {
+          quantidade_triada: progressoRota.triados,
+          quantidade_prevista: progressoRota.previstos,
+          percentual_triagem: progressoRota.percentual,
+        }
+      : last?.rota
+        ? {
+            quantidade_triada: last.rota.quantidade_triada,
+            quantidade_prevista: last.rota.quantidade_prevista,
+            percentual_triagem: last.rota.percentual_triagem,
+          }
+        : null;
+  const status = (() => {
     if (!last) return null;
     if (last.resultado === "ok")
       return {
         tag:
-          last.rota && last.rota.quantidade_triada >= last.rota.quantidade_prevista
+          progressoAtual && progressoAtual.quantidade_triada >= progressoAtual.quantidade_prevista
             ? "Rota completa"
             : "Triado com sucesso",
         icon: CheckCircle2,
@@ -828,7 +968,7 @@ function UltimoCard({ last }: { last: TriagemResult | null }) {
       icon: XCircle,
       color: "bg-destructive text-destructive-foreground",
     };
-  }, [last]);
+  })();
 
   if (!last || !status) {
     return (
@@ -854,7 +994,7 @@ function UltimoCard({ last }: { last: TriagemResult | null }) {
       <div className="font-mono text-lg md:text-xl font-bold break-all">
         {last.volume?.codigo ?? "—"}
       </div>
-      {last.rota && (
+      {last.rota && progressoAtual && (
         <div className="mt-4 space-y-3">
           <div className="text-xs text-muted-foreground">
             Rota <span className="font-mono font-semibold">{last.rota.codigo}</span>
@@ -867,15 +1007,19 @@ function UltimoCard({ last }: { last: TriagemResult | null }) {
                 Progresso da rota
               </span>
               <span className="font-mono">
-                <span className="font-bold">{last.rota.quantidade_triada}</span>/
-                {last.rota.quantidade_prevista} · {last.rota.percentual_triagem}%
+                <span className="font-bold">{progressoAtual.quantidade_triada}</span>/
+                {progressoAtual.quantidade_prevista} · {progressoAtual.percentual_triagem}%
               </span>
             </div>
-            <Progress value={last.rota.percentual_triagem} className="h-2" />
+            <Progress value={progressoAtual.percentual_triagem} className="h-2" />
           </div>
         </div>
       )}
-      <div className="mt-4 text-sm">{last.mensagem}</div>
+      <div className="mt-4 text-sm">
+        {last.resultado === "ok" && last.rota && progressoAtual
+          ? `Shipment triado — rota ${last.rota.codigo} (${progressoAtual.quantidade_triada}/${progressoAtual.quantidade_prevista}).`
+          : last.mensagem}
+      </div>
     </Card>
   );
 }
