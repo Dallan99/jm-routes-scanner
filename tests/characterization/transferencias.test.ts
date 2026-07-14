@@ -1,0 +1,134 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  caminhoEvidenciaTransferencia,
+  proximaEtapa,
+  type TransferenciaEvento,
+} from "../../src/lib/transferencias.functions";
+
+const migration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20260714143500_transferencias_module.sql"),
+  "utf8",
+);
+
+function evento(etapa: TransferenciaEvento["etapa"]): TransferenciaEvento {
+  return {
+    id: etapa,
+    etapa,
+    ocorrido_em: "2026-07-14T10:00:00.000Z",
+    localizacao_texto: null,
+    minutos_atraso: 0,
+    registrado_por: "00000000-0000-4000-8000-000000000001",
+  };
+}
+
+describe("Transferências — fluxo operacional", () => {
+  it("exige os três marcos na ordem Service → Service → XPT", () => {
+    expect(proximaEtapa([])).toBe("chegada_service");
+    expect(proximaEtapa([evento("chegada_service")])).toBe("saida_service");
+    expect(proximaEtapa([evento("chegada_service"), evento("saida_service")])).toBe("chegada_xpt");
+    expect(
+      proximaEtapa([evento("chegada_service"), evento("saida_service"), evento("chegada_xpt")]),
+    ).toBeNull();
+  });
+
+  it("cria caminho privado segmentado por base e transferência", () => {
+    const path = caminhoEvidenciaTransferencia(
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "chegada_service",
+      "Foto caminhão.JPG",
+    );
+    expect(path).toMatch(
+      /^11111111-1111-4111-8111-111111111111\/22222222-2222-4222-8222-222222222222\/chegada_service-[0-9a-f-]+\.jpg$/,
+    );
+  });
+});
+
+describe("Transferências — segurança e integridade SQL", () => {
+  it("libera visão global somente para admin e prende demais ao profiles.base_id", () => {
+    const inicio = migration.indexOf("CREATE OR REPLACE FUNCTION public.transferencia_base_access");
+    const fim = migration.indexOf("CREATE OR REPLACE FUNCTION public.transferencia_access", inicio);
+    const corpo = migration.slice(inicio, fim);
+    expect(corpo).toContain("public.has_role(_user_id, 'admin')");
+    expect(corpo).toContain("OR p.base_id = _base_id");
+    expect(corpo).toContain("p.ativo = true");
+    expect(corpo).not.toContain("'gerente'");
+    expect(corpo).not.toContain("user_bases");
+  });
+
+  it("mantém todas as tabelas operacionais com RLS", () => {
+    for (const tabela of [
+      "transferencias",
+      "transferencia_eventos",
+      "transferencia_ocorrencias",
+      "transferencia_evidencias",
+      "transferencia_motivos",
+      "transferencia_slas",
+    ]) {
+      expect(migration).toContain(`ALTER TABLE public.${tabela} ENABLE ROW LEVEL SECURITY`);
+    }
+  });
+
+  it("não cria policy de DELETE para dados operacionais", () => {
+    expect(migration).not.toMatch(/ON public\.transferencias\s+FOR DELETE/);
+    expect(migration).not.toMatch(/ON public\.transferencia_eventos\s+FOR DELETE/);
+    expect(migration).not.toMatch(/ON public\.transferencia_evidencias\s+FOR DELETE/);
+  });
+
+  it("mantém as fotos em bucket privado e limitado a imagens", () => {
+    expect(migration).toContain("'transferencias-evidencias', 'transferencias-evidencias', false");
+    expect(migration).toContain("10485760");
+    expect(migration).toContain("'image/jpeg', 'image/png', 'image/webp'");
+    expect(migration).toContain("public.transferencia_access(auth.uid()");
+  });
+
+  it("executa criação, marco e cancelamento em RPCs SECURITY DEFINER", () => {
+    for (const nome of [
+      "criar_transferencia",
+      "registrar_evento_transferencia",
+      "anexar_evidencia_transferencia",
+      "cancelar_transferencia",
+      "salvar_sla_transferencia",
+    ]) {
+      const inicio = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${nome}`);
+      expect(inicio).toBeGreaterThan(0);
+      const corpo = migration.slice(inicio, inicio + 1200);
+      expect(corpo).toContain("SECURITY DEFINER");
+      expect(corpo).toContain("SET search_path = public, pg_temp");
+    }
+  });
+
+  it("usa os SLAs iniciais 07:00, 09:00 e 60 minutos", () => {
+    expect(migration).toContain("chegada_service_limite time NOT NULL DEFAULT '07:00'");
+    expect(migration).toContain("saida_service_limite time NOT NULL DEFAULT '09:00'");
+    expect(migration).toContain("transito_max_minutos integer NOT NULL DEFAULT 60");
+    expect(migration).toContain("make_interval(mins => v_transito_max)");
+  });
+
+  it("audita criação, cada marco, evidência e cancelamento", () => {
+    expect(migration).toContain("'transferencia.criar'");
+    expect(migration).toContain("'transferencia.evento.' || p_etapa");
+    expect(migration).toContain("'transferencia.evidencia.anexar'");
+    expect(migration).toContain("'transferencia.cancelar'");
+    expect(migration).toContain("'transferencia.sla.salvar'");
+  });
+
+  it("rejeita avanço fora de ordem e etapa duplicada", () => {
+    expect(migration).toContain("'etapa_ja_registrada'");
+    expect(migration).toContain("'registre_chegada_service_primeiro'");
+    expect(migration).toContain("'registre_saida_service_primeiro'");
+    expect(migration).toContain("UNIQUE (transferencia_id, etapa)");
+  });
+
+  it("não contém DROP TABLE, TRUNCATE nem DELETE de dados", () => {
+    const executavel = migration
+      .split("\n")
+      .filter((linha) => !linha.trimStart().startsWith("--"))
+      .join("\n");
+    expect(executavel).not.toMatch(/\bDROP\s+TABLE\b/i);
+    expect(executavel).not.toMatch(/\bTRUNCATE\b/i);
+    expect(executavel).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+});

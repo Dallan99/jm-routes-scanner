@@ -1,0 +1,422 @@
+import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { z } from "zod";
+
+export const TRANSFERENCIA_ETAPAS = [
+  { value: "chegada_service", label: "Chegada no Service" },
+  { value: "saida_service", label: "Saída do Service" },
+  { value: "chegada_xpt", label: "Chegada no XPT" },
+] as const;
+
+export const TRANSFERENCIA_STATUS = [
+  { value: "aguardando_chegada_service", label: "Aguardando chegada no Service" },
+  { value: "no_service", label: "No Service / carregando" },
+  { value: "em_transito_xpt", label: "Em trânsito para o XPT" },
+  { value: "concluida_no_prazo", label: "Concluída no prazo" },
+  { value: "concluida_com_atraso", label: "Concluída com atraso" },
+  { value: "pendente_evidencia", label: "Pendente de evidência" },
+  { value: "em_analise", label: "Em análise" },
+  { value: "cancelada", label: "Cancelada" },
+] as const;
+
+export const RESPONSABILIDADES = [
+  { value: "JM_FROTA", label: "JM / Frota" },
+  { value: "MELI", label: "Mercado Livre" },
+  { value: "EXTERNO", label: "Fator externo" },
+  { value: "EM_ANALISE", label: "Em análise" },
+] as const;
+
+export type TransferenciaEtapa = (typeof TRANSFERENCIA_ETAPAS)[number]["value"];
+export type TransferenciaResponsabilidade = (typeof RESPONSABILIDADES)[number]["value"];
+
+export type TransferenciaMotivo = {
+  id: string;
+  codigo: string;
+  nome: string;
+  responsabilidade: TransferenciaResponsabilidade;
+  etapa: TransferenciaEtapa | null;
+  exige_descricao: boolean;
+  ordem: number;
+};
+
+export type TransferenciaEvento = {
+  id: string;
+  etapa: TransferenciaEtapa;
+  ocorrido_em: string;
+  localizacao_texto: string | null;
+  minutos_atraso: number;
+  registrado_por: string;
+};
+
+export type TransferenciaOcorrencia = {
+  id: string;
+  evento_id: string;
+  etapa: TransferenciaEtapa;
+  motivo_id: string | null;
+  responsabilidade: string;
+  minutos_atraso: number;
+  observacao: string | null;
+};
+
+export type TransferenciaEvidencia = {
+  id: string;
+  evento_id: string;
+  etapa: TransferenciaEtapa;
+  storage_path: string | null;
+  timemark_url: string | null;
+  horario_evidencia: string | null;
+  localizacao_texto: string | null;
+  status: string;
+  signed_url: string | null;
+};
+
+export type TransferenciaDetalhe = {
+  id: string;
+  codigo: string;
+  base_id: string;
+  base_codigo: string;
+  base_nome: string;
+  data_operacional: string;
+  service: string;
+  motorista: string;
+  placa: string;
+  tipo_veiculo: string | null;
+  status: string;
+  observacao: string | null;
+  criado_por: string;
+  finalizada_em: string | null;
+  cancelada_em: string | null;
+  cancelamento_motivo: string | null;
+  created_at: string;
+  updated_at: string;
+  eventos: TransferenciaEvento[];
+  ocorrencias: TransferenciaOcorrencia[];
+  evidencias: TransferenciaEvidencia[];
+};
+
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const filtrosSchema = z
+  .object({
+    inicio: dateSchema,
+    fim: dateSchema,
+    baseId: z.string().uuid().optional(),
+    service: z.string().trim().max(120).optional(),
+    motorista: z.string().trim().max(160).optional(),
+    placa: z.string().trim().max(20).optional(),
+    status: z.string().max(60).optional(),
+    responsabilidade: z.string().max(40).optional(),
+    motivoId: z.string().uuid().optional(),
+  })
+  .refine((v) => v.inicio <= v.fim, { message: "Período inválido." })
+  .refine(
+    (v) =>
+      Math.round(
+        (Date.parse(`${v.fim}T00:00:00Z`) - Date.parse(`${v.inicio}T00:00:00Z`)) / 86_400_000,
+      ) <= 93,
+    { message: "Selecione um período de até 93 dias." },
+  );
+
+export type TransferenciaFiltros = z.infer<typeof filtrosSchema>;
+
+export const listarMotivosTransferencia = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<TransferenciaMotivo[]> => {
+    const { data, error } = await context.supabase
+      .from("transferencia_motivos")
+      .select("id, codigo, nome, responsabilidade, etapa, exige_descricao, ordem")
+      .eq("ativo", true)
+      .order("ordem", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as TransferenciaMotivo[];
+  });
+
+export const listarTransferencias = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => filtrosSchema.parse(input))
+  .handler(async ({ data: filtros, context }): Promise<TransferenciaDetalhe[]> => {
+    const { supabase } = context;
+    type TransferenciaRow = Omit<
+      TransferenciaDetalhe,
+      "base_codigo" | "base_nome" | "eventos" | "ocorrencias" | "evidencias"
+    >;
+    const transferencias: TransferenciaRow[] = [];
+    const page = 1000;
+    for (let pagina = 0; pagina < 100; pagina++) {
+      let query = supabase
+        .from("transferencias")
+        .select(
+          "id, codigo, base_id, data_operacional, service, motorista, placa, tipo_veiculo, status, observacao, criado_por, finalizada_em, cancelada_em, cancelamento_motivo, created_at, updated_at",
+        )
+        .gte("data_operacional", filtros.inicio)
+        .lte("data_operacional", filtros.fim)
+        .order("data_operacional", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(pagina * page, pagina * page + page - 1);
+
+      if (filtros.baseId) query = query.eq("base_id", filtros.baseId);
+      if (filtros.service) query = query.ilike("service", `%${filtros.service}%`);
+      if (filtros.motorista) query = query.ilike("motorista", `%${filtros.motorista}%`);
+      if (filtros.placa) query = query.ilike("placa", `%${filtros.placa}%`);
+      if (filtros.status) query = query.eq("status", filtros.status);
+
+      const { data: paginaRows, error } = await query;
+      if (error) throw new Error(error.message);
+      transferencias.push(...((paginaRows ?? []) as TransferenciaRow[]));
+      if (!paginaRows || paginaRows.length < page) break;
+      if (pagina === 99) {
+        throw new Error(
+          "Mais de 100 mil transferências no período. Reduza o intervalo do relatório.",
+        );
+      }
+    }
+    if (!transferencias.length) return [];
+
+    const ids = transferencias.map((t) => t.id);
+    const baseIds = Array.from(new Set(transferencias.map((t) => t.base_id)));
+    const { data: bases, error: basesError } = await supabase
+      .from("bases")
+      .select("id, codigo, nome")
+      .in("id", baseIds);
+    if (basesError) throw new Error(basesError.message);
+
+    type EventoRaw = TransferenciaEvento & { transferencia_id: string };
+    type OcorrenciaRaw = TransferenciaOcorrencia & { transferencia_id: string };
+    type EvidenciaRaw = Omit<TransferenciaEvidencia, "signed_url"> & {
+      transferencia_id: string;
+    };
+    const eventos: EventoRaw[] = [];
+    const ocorrencias: OcorrenciaRaw[] = [];
+    const evidencias: EvidenciaRaw[] = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const lote = ids.slice(i, i + 200);
+      const [eventosRes, ocorrenciasRes, evidenciasRes] = await Promise.all([
+        supabase
+          .from("transferencia_eventos")
+          .select(
+            "id, transferencia_id, etapa, ocorrido_em, localizacao_texto, minutos_atraso, registrado_por",
+          )
+          .in("transferencia_id", lote)
+          .order("ocorrido_em", { ascending: true }),
+        supabase
+          .from("transferencia_ocorrencias")
+          .select(
+            "id, transferencia_id, evento_id, etapa, motivo_id, responsabilidade, minutos_atraso, observacao",
+          )
+          .in("transferencia_id", lote),
+        supabase
+          .from("transferencia_evidencias")
+          .select(
+            "id, transferencia_id, evento_id, etapa, storage_path, timemark_url, horario_evidencia, localizacao_texto, status",
+          )
+          .in("transferencia_id", lote)
+          .is("substituida_por", null),
+      ]);
+      if (eventosRes.error) throw new Error(eventosRes.error.message);
+      if (ocorrenciasRes.error) throw new Error(ocorrenciasRes.error.message);
+      if (evidenciasRes.error) throw new Error(evidenciasRes.error.message);
+      eventos.push(...((eventosRes.data ?? []) as EventoRaw[]));
+      ocorrencias.push(...((ocorrenciasRes.data ?? []) as OcorrenciaRaw[]));
+      evidencias.push(...((evidenciasRes.data ?? []) as EvidenciaRaw[]));
+    }
+
+    const ocorrFiltradas = ocorrencias.filter(
+      (o) =>
+        (!filtros.responsabilidade || o.responsabilidade === filtros.responsabilidade) &&
+        (!filtros.motivoId || o.motivo_id === filtros.motivoId),
+    );
+    const idsPorOcorrencia = new Set(ocorrFiltradas.map((o) => o.transferencia_id));
+    const filtrarPorOcorrencia = !!filtros.responsabilidade || !!filtros.motivoId;
+    const baseMap = new Map((bases ?? []).map((b) => [b.id, b]));
+
+    const evidenciasComUrl = await Promise.all(
+      evidencias.map(async (e) => {
+        let signedUrl: string | null = null;
+        if (e.storage_path) {
+          const { data: signed } = await supabase.storage
+            .from("transferencias-evidencias")
+            .createSignedUrl(e.storage_path, 3600);
+          signedUrl = signed?.signedUrl ?? null;
+        }
+        return { ...e, signed_url: signedUrl };
+      }),
+    );
+    const agrupar = <T extends { transferencia_id: string }>(rows: T[]) => {
+      const map = new Map<string, T[]>();
+      for (const row of rows) {
+        const grupo = map.get(row.transferencia_id) ?? [];
+        grupo.push(row);
+        map.set(row.transferencia_id, grupo);
+      }
+      return map;
+    };
+    const eventosMap = agrupar(eventos);
+    const ocorrenciasMap = agrupar(ocorrencias);
+    const evidenciasMap = agrupar(evidenciasComUrl);
+
+    return transferencias
+      .filter((t) => !filtrarPorOcorrencia || idsPorOcorrencia.has(t.id))
+      .map((t) => {
+        const base = baseMap.get(t.base_id);
+        return {
+          ...t,
+          base_codigo: base?.codigo ?? "—",
+          base_nome: base?.nome ?? "Base não encontrada",
+          eventos: eventosMap.get(t.id) ?? [],
+          ocorrencias: ocorrenciasMap.get(t.id) ?? [],
+          evidencias: evidenciasMap.get(t.id) ?? [],
+        } as TransferenciaDetalhe;
+      });
+  });
+
+const criarSchema = z.object({
+  baseId: z.string().uuid(),
+  dataOperacional: dateSchema,
+  service: z.string().trim().min(2).max(120),
+  motorista: z.string().trim().min(2).max(160),
+  placa: z.string().trim().min(5).max(20),
+  tipoVeiculo: z.string().trim().max(80).optional(),
+  observacao: z.string().trim().max(1000).optional(),
+});
+
+export const criarTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => criarSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("criar_transferencia", {
+      p_base_id: data.baseId,
+      p_data_operacional: data.dataOperacional,
+      p_service: data.service,
+      p_motorista: data.motorista,
+      p_placa: data.placa,
+      p_tipo_veiculo: data.tipoVeiculo || null,
+      p_observacao: data.observacao || null,
+    });
+    if (error) throw new Error(error.message);
+    return result;
+  });
+
+const marcoSchema = z.object({
+  transferenciaId: z.string().uuid(),
+  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt"]),
+  ocorridoEm: z.string().datetime({ offset: true }),
+  storagePath: z.string().max(500).optional(),
+  timemarkUrl: z.string().url().max(1000).optional(),
+  horarioEvidencia: z.string().datetime({ offset: true }).optional(),
+  localizacaoTexto: z.string().trim().max(300).optional(),
+  motivoCodigo: z.string().trim().max(80).optional(),
+  responsabilidade: z.enum(["JM_FROTA", "MELI", "EXTERNO", "EM_ANALISE"]).optional(),
+  observacao: z.string().trim().max(1000).optional(),
+});
+
+export const registrarMarcoTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => marcoSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("registrar_evento_transferencia", {
+      p_transferencia_id: data.transferenciaId,
+      p_etapa: data.etapa,
+      p_ocorrido_em: data.ocorridoEm,
+      p_storage_path: data.storagePath || null,
+      p_timemark_url: data.timemarkUrl || null,
+      p_horario_evidencia: data.horarioEvidencia || null,
+      p_localizacao_texto: data.localizacaoTexto || null,
+      p_motivo_codigo: data.motivoCodigo || null,
+      p_responsabilidade: data.responsabilidade || null,
+      p_observacao: data.observacao || null,
+    });
+    if (error) throw new Error(error.message);
+    return result;
+  });
+
+const evidenciaSchema = z.object({
+  transferenciaId: z.string().uuid(),
+  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt"]),
+  storagePath: z.string().trim().min(1).max(500),
+  timemarkUrl: z.string().url().max(1000),
+  horarioEvidencia: z.string().datetime({ offset: true }).optional(),
+  localizacaoTexto: z.string().trim().max(300).optional(),
+});
+
+export const anexarEvidenciaTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => evidenciaSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("anexar_evidencia_transferencia", {
+      p_transferencia_id: data.transferenciaId,
+      p_etapa: data.etapa,
+      p_storage_path: data.storagePath,
+      p_timemark_url: data.timemarkUrl,
+      p_horario_evidencia: data.horarioEvidencia || null,
+      p_localizacao_texto: data.localizacaoTexto || null,
+    });
+    if (error) throw new Error(error.message);
+    return result;
+  });
+
+export const cancelarTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        transferenciaId: z.string().uuid(),
+        justificativa: z.string().trim().min(10).max(1000),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("cancelar_transferencia", {
+      p_transferencia_id: data.transferenciaId,
+      p_justificativa: data.justificativa,
+    });
+    if (error) throw new Error(error.message);
+    return result;
+  });
+
+export const salvarSlaTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        baseId: z.string().uuid(),
+        service: z.string().trim().min(2).max(120),
+        chegadaServiceLimite: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+        saidaServiceLimite: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+        transitoMaxMinutos: z.number().int().min(1).max(1440),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("salvar_sla_transferencia", {
+      p_base_id: data.baseId,
+      p_service: data.service,
+      p_chegada_service_limite: data.chegadaServiceLimite,
+      p_saida_service_limite: data.saidaServiceLimite,
+      p_transito_max_minutos: data.transitoMaxMinutos,
+    });
+    if (error) throw new Error(error.message);
+    return result;
+  });
+
+export function proximaEtapa(eventos: TransferenciaEvento[]): TransferenciaEtapa | null {
+  const etapas = new Set(eventos.map((e) => e.etapa));
+  if (!etapas.has("chegada_service")) return "chegada_service";
+  if (!etapas.has("saida_service")) return "saida_service";
+  if (!etapas.has("chegada_xpt")) return "chegada_xpt";
+  return null;
+}
+
+export function caminhoEvidenciaTransferencia(
+  baseId: string,
+  transferenciaId: string,
+  etapa: TransferenciaEtapa,
+  nomeOriginal: string,
+): string {
+  const ext =
+    nomeOriginal
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || "jpg";
+  return `${baseId}/${transferenciaId}/${etapa}-${crypto.randomUUID()}.${ext}`;
+}
