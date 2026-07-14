@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { resumirRotasTriagem, rotaEfetivaTriagem } from "./triagem-domain";
 
 const bipSchema = z.object({
   codigo: z
@@ -42,6 +43,18 @@ export type TriagemResult = {
   };
   volume?: { codigo: string; sequencia: number; total: number };
 };
+
+export type LocalizacaoShipmentTriagem =
+  | {
+      encontrado: true;
+      shipment: string;
+      rota: string;
+      planejada: string | null;
+      otimizada: string | null;
+      cidade: string | null;
+      triado: boolean;
+    }
+  | { encontrado: false; shipment: string; mensagem: string };
 
 /**
  * Bipagem de Triagem — trabalha em cima da PLANILHA importada (escala).
@@ -130,8 +143,7 @@ export const biparTriagem = createServerFn({ method: "POST" })
         .eq("importacoes_escala.ativa", true)
         .limit(1);
       const outro = outros?.[0] as
-        | { id: string; base_id: string; bases: { codigo: string; nome: string } | null }
-        | undefined;
+        { id: string; base_id: string; bases: { codigo: string; nome: string } | null } | undefined;
       if (outro) {
         const msg = `Pedido pertence a outra operação — base ${outro.bases?.codigo ?? "?"} ${outro.bases?.nome ?? ""}.`;
         await log("outra_base", msg, outro.base_id, outro.id);
@@ -144,7 +156,7 @@ export const biparTriagem = createServerFn({ method: "POST" })
 
     // 4) Métricas por rota planejada
     // A operação confere por Rota Otimizada (coluna "Rota Otimizada" da planilha).
-    const rotaCodigo = escala.otimizada ?? escala.planejada ?? "—";
+    const rotaCodigo = rotaEfetivaTriagem(escala) ?? "—";
 
     // 4.a) Se o operador escolheu uma rota, o shipment tem que pertencer a ela
     if (data.rotaSelecionada && rotaCodigo !== data.rotaSelecionada) {
@@ -154,19 +166,31 @@ export const biparTriagem = createServerFn({ method: "POST" })
     }
 
     const countRota = async () => {
-      const [{ count: prev }, { count: tri }] = await Promise.all([
-        supabase
-          .from("escalas")
-          .select("id", { count: "exact", head: true })
-          .eq("importacao_id", escala!.importacao_id!)
-          .eq("otimizada", escala!.otimizada ?? ""),
-        supabase
-          .from("escalas")
-          .select("id", { count: "exact", head: true })
-          .eq("importacao_id", escala!.importacao_id!)
-          .eq("otimizada", escala!.otimizada ?? "")
-          .eq("triado", true),
-      ]);
+      let previstosQuery = supabase
+        .from("escalas")
+        .select("id", { count: "exact", head: true })
+        .eq("importacao_id", escala!.importacao_id!)
+        .not("shipment", "is", null)
+        .neq("shipment", "");
+      let triadosQuery = supabase
+        .from("escalas")
+        .select("id", { count: "exact", head: true })
+        .eq("importacao_id", escala!.importacao_id!)
+        .not("shipment", "is", null)
+        .neq("shipment", "")
+        .eq("triado", true);
+
+      if (escala!.otimizada?.trim()) {
+        previstosQuery = previstosQuery.eq("otimizada", escala!.otimizada);
+        triadosQuery = triadosQuery.eq("otimizada", escala!.otimizada);
+      } else {
+        previstosQuery = previstosQuery
+          .is("otimizada", null)
+          .eq("planejada", escala!.planejada ?? "");
+        triadosQuery = triadosQuery.is("otimizada", null).eq("planejada", escala!.planejada ?? "");
+      }
+
+      const [{ count: prev }, { count: tri }] = await Promise.all([previstosQuery, triadosQuery]);
       return { prev: prev ?? 0, tri: tri ?? 0 };
     };
     const build = async () => {
@@ -200,11 +224,28 @@ export const biparTriagem = createServerFn({ method: "POST" })
     }
 
     // 6) Marca triado
-    const { error: upErr } = await supabase
+    const { data: atualizado, error: upErr } = await supabase
       .from("escalas")
       .update({ triado: true, triado_em: hora, triado_por: userId })
-      .eq("id", escala.id);
+      .eq("id", escala.id)
+      .eq("triado", false)
+      .select("id")
+      .maybeSingle();
     if (upErr) throw new Error(upErr.message);
+
+    // Outra leitura pode ter vencido a corrida entre o SELECT e o UPDATE.
+    // Nesse caso a segunda tentativa é duplicada, nunca um segundo "ok".
+    if (!atualizado) {
+      const msg = `Shipment ${escala.shipment} já foi triado.`;
+      await log("duplicado", msg, escala.base_id, escala.id);
+      return {
+        resultado: "duplicado",
+        mensagem: msg,
+        hora,
+        rota: await build(),
+        volume: { codigo: escala.shipment ?? data.codigo, sequencia: 1, total: 1 },
+      };
+    }
 
     const rotaInfo = await build();
     const mensagem =
@@ -225,10 +266,12 @@ export const biparTriagem = createServerFn({ method: "POST" })
 export const triagemRotasDoDia = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({
-      baseId: z.string().uuid(),
-      dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    }).parse(d),
+    z
+      .object({
+        baseId: z.string().uuid(),
+        dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
@@ -239,17 +282,31 @@ export const triagemRotasDoDia = createServerFn({ method: "GET" })
       .eq("data_operacional", data.dataOperacional)
       .eq("ativa", true)
       .maybeSingle();
-    if (!impAtiva) return [] as Array<{ rota: string; previstos: number; triados: number; pendentes: number; percentual: number; status: "aberta" | "fechada" }>;
+    if (!impAtiva)
+      return [] as Array<{
+        rota: string;
+        previstos: number;
+        triados: number;
+        pendentes: number;
+        percentual: number;
+        status: "aberta" | "fechada";
+      }>;
 
     // PostgREST limita a 1000 linhas por página. Como a planilha pode ter
     // milhares de shipments, precisamos paginar para não perder rotas.
     const PAGE = 1000;
-    const linhas: Array<{ planejada: string | null; otimizada: string | null; triado: boolean | null }> = [];
+    const linhas: Array<{
+      shipment: string | null;
+      planejada: string | null;
+      otimizada: string | null;
+      triado: boolean | null;
+    }> = [];
     for (let from = 0; ; from += PAGE) {
       const { data: page, error } = await supabase
         .from("escalas")
-        .select("planejada, otimizada, triado")
+        .select("shipment, planejada, otimizada, triado")
         .eq("importacao_id", impAtiva.id)
+        .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) throw new Error(error.message);
       if (!page || page.length === 0) break;
@@ -257,32 +314,78 @@ export const triagemRotasDoDia = createServerFn({ method: "GET" })
       if (page.length < PAGE) break;
     }
 
-    const acc = new Map<string, { previstos: number; triados: number }>();
-    for (const l of linhas) {
-      const rota = (l.otimizada as string | null) ?? (l.planejada as string | null) ?? "—";
-      const cur = acc.get(rota) ?? { previstos: 0, triados: 0 };
-      cur.previstos += 1;
-      if (l.triado) cur.triados += 1;
-      acc.set(rota, cur);
+    return resumirRotasTriagem(linhas);
+  });
+
+export const localizarShipmentTriagem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        baseId: z.string().uuid(),
+        dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        shipment: z
+          .string()
+          .trim()
+          .min(3)
+          .max(120)
+          .transform((valor) => valor.replace(/[^0-9A-Za-z]/g, ""))
+          .refine((valor) => valor.length >= 3, "Shipment inválido."),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }): Promise<LocalizacaoShipmentTriagem> => {
+    const { supabase } = context;
+    const { data: impAtiva, error: impErro } = await supabase
+      .from("importacoes_escala")
+      .select("id")
+      .eq("base_id", data.baseId)
+      .eq("data_operacional", data.dataOperacional)
+      .eq("ativa", true)
+      .maybeSingle();
+    if (impErro) throw new Error(impErro.message);
+    if (!impAtiva) {
+      return {
+        encontrado: false,
+        shipment: data.shipment,
+        mensagem: "Não existe importação ativa para esta base e dia operacional.",
+      };
     }
 
-    return Array.from(acc.entries())
-      .map(([rota, v]) => {
-        const pendentes = Math.max(v.previstos - v.triados, 0);
-        const percentual = v.previstos ? Math.round((v.triados / v.previstos) * 100) : 0;
-        return {
-          rota,
-          previstos: v.previstos,
-          triados: v.triados,
-          pendentes,
-          percentual,
-          status: pendentes === 0 ? ("fechada" as const) : ("aberta" as const),
-        };
-      })
-      .sort((a, b) => {
-        if (a.status !== b.status) return a.status === "aberta" ? -1 : 1;
-        return a.rota.localeCompare(b.rota, "pt-BR", { numeric: true });
-      });
+    const { data: linhas, error } = await supabase
+      .from("escalas")
+      .select("shipment, planejada, otimizada, cidade, triado")
+      .eq("importacao_id", impAtiva.id)
+      .eq("shipment", data.shipment)
+      .limit(2);
+    if (error) throw new Error(error.message);
+
+    const linha = linhas?.[0];
+    if (!linha) {
+      return {
+        encontrado: false,
+        shipment: data.shipment,
+        mensagem: "Shipment não encontrado na operação ativa desta base e dia.",
+      };
+    }
+    if ((linhas?.length ?? 0) > 1) {
+      throw new Error("Shipment duplicado na importação ativa. Acione a supervisão.");
+    }
+
+    const rota = rotaEfetivaTriagem(linha);
+    if (!rota) {
+      throw new Error("Shipment encontrado, mas sem rota planejada ou otimizada.");
+    }
+
+    return {
+      encontrado: true,
+      shipment: linha.shipment ?? data.shipment,
+      rota,
+      planejada: linha.planejada,
+      otimizada: linha.otimizada,
+      cidade: linha.cidade,
+      triado: !!linha.triado,
+    };
   });
 
 export const ultimasTriagens = createServerFn({ method: "GET" })
@@ -307,10 +410,12 @@ export const ultimasTriagens = createServerFn({ method: "GET" })
 export const triagemResumoDia = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({
-      baseId: z.string().uuid(),
-      dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    }).parse(d),
+    z
+      .object({
+        baseId: z.string().uuid(),
+        dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -332,11 +437,15 @@ export const triagemResumoDia = createServerFn({ method: "GET" })
         supabase
           .from("escalas")
           .select("id", { count: "exact", head: true })
-          .eq("importacao_id", impAtiva.id),
+          .eq("importacao_id", impAtiva.id)
+          .not("shipment", "is", null)
+          .neq("shipment", ""),
         supabase
           .from("escalas")
           .select("id", { count: "exact", head: true })
           .eq("importacao_id", impAtiva.id)
+          .not("shipment", "is", null)
+          .neq("shipment", "")
           .eq("triado", true),
       ]);
       totalPrev = p ?? 0;
@@ -363,11 +472,13 @@ export const triagemResumoDia = createServerFn({ method: "GET" })
 export const triagemShipmentsPendentes = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({
-      baseId: z.string().uuid(),
-      dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      rota: z.string().trim().min(1).max(120),
-    }).parse(d),
+    z
+      .object({
+        baseId: z.string().uuid(),
+        dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        rota: z.string().trim().min(1).max(120),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
@@ -386,19 +497,38 @@ export const triagemShipmentsPendentes = createServerFn({ method: "GET" })
       };
 
     const PAGE = 1000;
-    const rows: Array<{ shipment: string | null; cidade: string | null; triado: boolean | null }> = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data: page, error } = await supabase
-        .from("escalas")
-        .select("shipment, cidade, triado")
-        .eq("importacao_id", impAtiva.id)
-        .eq("otimizada", data.rota)
-        .range(from, from + PAGE - 1);
-      if (error) throw new Error(error.message);
-      if (!page || page.length === 0) break;
-      rows.push(...page);
-      if (page.length < PAGE) break;
-    }
+    type LinhaRota = {
+      id: string;
+      shipment: string | null;
+      cidade: string | null;
+      triado: boolean | null;
+    };
+    const carregar = async (fallbackPlanejada: boolean) => {
+      const resultado: LinhaRota[] = [];
+      for (let from = 0; ; from += PAGE) {
+        let query = supabase
+          .from("escalas")
+          .select("id, shipment, cidade, triado")
+          .eq("importacao_id", impAtiva.id)
+          .not("shipment", "is", null)
+          .neq("shipment", "");
+        query = fallbackPlanejada
+          ? query.is("otimizada", null).eq("planejada", data.rota)
+          : query.eq("otimizada", data.rota);
+        const { data: page, error } = await query
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        if (!page || page.length === 0) break;
+        resultado.push(...page);
+        if (page.length < PAGE) break;
+      }
+      return resultado;
+    };
+    const [otimizadas, planejadasFallback] = await Promise.all([carregar(false), carregar(true)]);
+    const rows = Array.from(
+      new Map([...otimizadas, ...planejadasFallback].map((linha) => [linha.id, linha])).values(),
+    );
     const pendentes = rows
       .filter((r) => !r.triado && r.shipment)
       .map((r) => ({ shipment: r.shipment as string, cidade: r.cidade }))

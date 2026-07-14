@@ -11,6 +11,7 @@ type BaseOperacionalState = {
   base: BaseSelecionada | null;
   diaOperacional: string | null; // YYYY-MM-DD
   setSelecao: (base: BaseSelecionada, dia: string) => void;
+  trocarDia: (novoDia: string) => void;
   limpar: () => void;
 };
 
@@ -38,7 +39,11 @@ export function BaseOperacionalProvider({ children }: { children: ReactNode }) {
       // Migração: descarta seleção antiga persistida em localStorage,
       // para que Admin/Gerente escolham a base explicitamente.
       if (typeof window !== "undefined") {
-        try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+        try {
+          window.localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
       }
       const raw = storage()?.getItem(STORAGE_KEY);
       if (!raw) return;
@@ -61,6 +66,19 @@ export function BaseOperacionalProvider({ children }: { children: ReactNode }) {
         setDia(d);
         try {
           storage()?.setItem(STORAGE_KEY, JSON.stringify({ base: b, diaOperacional: d }));
+        } catch {
+          /* ignore */
+        }
+      },
+      trocarDia: (novoDia) => {
+        if (!base) return;
+        // Aceita somente YYYY-MM-DD válido; rejeita silenciosamente qualquer outra forma.
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(novoDia)) return;
+        const d = new Date(novoDia + "T00:00:00");
+        if (Number.isNaN(d.getTime())) return;
+        setDia(novoDia);
+        try {
+          storage()?.setItem(STORAGE_KEY, JSON.stringify({ base, diaOperacional: novoDia }));
         } catch {
           /* ignore */
         }
