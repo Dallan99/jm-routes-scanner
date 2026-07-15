@@ -9,13 +9,11 @@ import {
   triagemRotasDoDia,
   triagemShipmentsPendentes,
   localizarShipmentTriagem,
-  concluirRotaComRessalva,
   type TriagemResult,
   type LocalizacaoShipmentTriagem,
 } from "@/lib/triagem.functions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,7 +160,6 @@ function TriagemPage() {
   const rotasFn = useServerFn(triagemRotasDoDia);
   const pendentesFn = useServerFn(triagemShipmentsPendentes);
   const localizarFn = useServerFn(localizarShipmentTriagem);
-  const concluirRessalvaFn = useServerFn(concluirRotaComRessalva);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastRef = useRef<{ codigo: string; ts: number } | null>(null);
   const [codigo, setCodigo] = useState("");
@@ -177,8 +174,6 @@ function TriagemPage() {
   const [resultadoConsulta, setResultadoConsulta] = useState<LocalizacaoShipmentTriagem | null>(
     null,
   );
-  const [dialogRessalvaAberto, setDialogRessalvaAberto] = useState(false);
-  const [motivoRessalva, setMotivoRessalva] = useState("");
 
   const detalheQuery = useQuery({
     queryKey: ["triagem-pendentes", baseId, dataOperacional, rotaDetalhe],
@@ -339,51 +334,6 @@ function TriagemPage() {
     },
   });
 
-  const concluirRessalvaMutation = useMutation({
-    mutationFn: () => {
-      if (!rotaSelecionada) {
-        throw new Error("Selecione uma rota.");
-      }
-
-      return concluirRessalvaFn({
-        data: {
-          baseId,
-          dataOperacional,
-          rota: rotaSelecionada,
-          motivo: motivoRessalva.trim(),
-        },
-      });
-    },
-    onSuccess: (resultado) => {
-      qc.invalidateQueries({ queryKey: ["triagem-rotas", baseId, dataOperacional] });
-      qc.invalidateQueries({
-        queryKey: ["triagem-rota-operacao", baseId, dataOperacional, rotaSelecionada],
-      });
-      qc.invalidateQueries({
-        queryKey: ["triagem-pendentes", baseId, dataOperacional],
-      });
-
-      setDialogRessalvaAberto(false);
-      setMotivoRessalva("");
-      setCodigo("");
-      setSession((s) => ({ ...s, paused: true, startedAt: null }));
-
-      toast.success(
-        `Rota ${resultado.rota} concluída com ressalva — ${resultado.faltantes} item(ns) faltante(s).`,
-        { duration: 7000 },
-      );
-    },
-    onError: (erro: unknown) => {
-      beepError();
-      toast.error(
-        erro instanceof Error
-          ? erro.message
-          : "Falha ao concluir a rota com ressalva.",
-        { duration: 7000 },
-      );
-    },
-  });
-
   const localizarMutation = useMutation({
     mutationFn: (shipment: string) => localizarFn({ data: { baseId, dataOperacional, shipment } }),
     onSuccess: (resultado) => {
@@ -425,15 +375,6 @@ function TriagemPage() {
         setCodigo("");
         return;
       }
-      if (rotaConcluidaRessalva) {
-        beepError();
-        toast.error(
-          `A rota ${rotaSelecionada} foi concluída com ressalva e está bloqueada para novas bipagens.`,
-          { duration: 7000 },
-        );
-        setCodigo("");
-        return;
-      }
       const trimmed = cod.trim();
       if (trimmed.length < 3) return;
       const ts = Date.now();
@@ -450,7 +391,7 @@ function TriagemPage() {
       mutation.mutate(trimmed);
       setCodigo("");
     },
-    [mutation, paused, rotaSelecionada, rotaConcluidaRessalva],
+    [mutation, paused, rotaSelecionada],
   );
 
   // Foco permanente
@@ -582,7 +523,6 @@ function TriagemPage() {
   const pendentes = resumo.data?.pendentes ?? 0;
   const pct = totalPrev ? Math.round((totalTri / totalPrev) * 100) : 0;
   const rotaAtual = (rotas.data ?? []).find((r) => r.rota === rotaSelecionada) ?? null;
-  const rotaConcluidaRessalva = rotaAtual?.status === "concluida_ressalva";
 
   const elapsedMs = accumulatedMs + (startedAt && !paused ? now - startedAt : 0);
   const elapsed = Math.floor(elapsedMs / 1000);
@@ -711,11 +651,9 @@ function TriagemPage() {
       ) : (
         <Card
           className={`p-4 md:p-6 border-2 ${
-            rotaConcluidaRessalva
-              ? "border-amber-500 bg-amber-50/80"
-              : rotaAtual?.percentual === 100
-                ? "border-success bg-success/5"
-                : "border-destructive bg-destructive/5"
+            rotaAtual?.percentual === 100
+              ? "border-success bg-success/5"
+              : "border-destructive bg-destructive/5"
           }`}
         >
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -732,18 +670,12 @@ function TriagemPage() {
             </div>
             <Badge
               className={
-                rotaConcluidaRessalva
-                  ? "bg-amber-500 text-white"
-                  : rotaAtual?.percentual === 100
-                    ? "bg-success text-success-foreground"
-                    : "bg-destructive text-destructive-foreground"
+                rotaAtual?.percentual === 100
+                  ? "bg-success text-success-foreground"
+                  : "bg-destructive text-destructive-foreground"
               }
             >
-              {rotaConcluidaRessalva
-                ? "Concluída com ressalva"
-                : rotaAtual?.percentual === 100
-                  ? "100% concluída"
-                  : "Incompleta"}
+              {rotaAtual?.percentual === 100 ? "100% concluída" : "Incompleta"}
             </Badge>
           </div>
           <div className="grid grid-cols-3 gap-3 mt-4 text-center">
@@ -757,54 +689,17 @@ function TriagemPage() {
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Faltando</div>
-              <b
-                className={`text-xl ${
-                  rotaConcluidaRessalva ? "text-amber-700" : "text-destructive"
-                }`}
-              >
-                {rotaAtual?.pendentes ?? 0}
-              </b>
+              <b className="text-xl text-destructive">{rotaAtual?.pendentes ?? 0}</b>
             </div>
           </div>
           <Progress
             value={rotaAtual?.percentual ?? 0}
             className={`h-3 mt-4 ${
-              rotaConcluidaRessalva
-                ? "bg-amber-200 [&>div]:bg-amber-500"
-                : rotaAtual?.percentual === 100
-                  ? "bg-success/20 [&>div]:bg-success"
-                  : "bg-destructive/20 [&>div]:bg-destructive"
+              rotaAtual?.percentual === 100
+                ? "bg-success/20 [&>div]:bg-success"
+                : "bg-destructive/20 [&>div]:bg-destructive"
             }`}
           />
-
-          {rotaConcluidaRessalva && rotaAtual?.conclusaoRessalva ? (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-100/80 p-3">
-              <div className="flex items-center gap-2 font-semibold text-amber-800">
-                <AlertTriangle className="h-4 w-4" />
-                Concluída com ressalva
-              </div>
-              <p className="mt-1 text-sm text-amber-900">
-                Motivo: {rotaAtual.conclusaoRessalva.motivo}
-              </p>
-              <p className="mt-1 text-xs text-amber-700">
-                Finalizada em{" "}
-                {new Date(rotaAtual.conclusaoRessalva.concluidaEm).toLocaleString("pt-BR")} ·{" "}
-                {rotaAtual.conclusaoRessalva.faltantes} item(ns) faltante(s)
-              </p>
-            </div>
-          ) : rotaAtual && rotaAtual.percentual < 100 ? (
-            <div className="mt-4 flex justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50"
-                onClick={() => setDialogRessalvaAberto(true)}
-              >
-                <AlertTriangle className="h-4 w-4" />
-                Concluir com itens faltantes
-              </Button>
-            </div>
-          ) : null}
         </Card>
       )}
 
@@ -831,11 +726,7 @@ function TriagemPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {paused ? (
-                    <Button
-                      onClick={resumeSession}
-                      className="gap-2"
-                      disabled={rotaConcluidaRessalva}
-                    >
+                    <Button onClick={resumeSession} className="gap-2">
                       <Play className="w-4 h-4" />
                       Retomar
                     </Button>
@@ -892,14 +783,12 @@ function TriagemPage() {
                   spellCheck={false}
                   autoComplete="off"
                   placeholder={
-                    rotaConcluidaRessalva
-                      ? `Rota ${rotaSelecionada} — concluída com ressalva`
-                      : rotaSelecionada
-                        ? `Rota ${rotaSelecionada} — aguardando leitura…`
-                        : "Selecione uma rota para começar…"
+                    rotaSelecionada
+                      ? `Rota ${rotaSelecionada} — aguardando leitura…`
+                      : "Selecione uma rota para começar…"
                   }
                   className="h-20 md:h-24 text-3xl md:text-4xl font-mono tracking-widest text-center"
-                  disabled={!rotaSelecionada || rotaConcluidaRessalva}
+                  disabled={!rotaSelecionada}
                 />
               </form>
 
@@ -961,70 +850,6 @@ function TriagemPage() {
           </Card>
         </>
       )}
-      <Dialog
-        open={dialogRessalvaAberto}
-        onOpenChange={(aberto) => {
-          setDialogRessalvaAberto(aberto);
-          if (!aberto) setMotivoRessalva("");
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Concluir rota com itens faltantes</DialogTitle>
-            <DialogDescription>
-              A rota {rotaSelecionada} possui {rotaAtual?.pendentes ?? 0} item(ns) faltante(s).
-              Informe obrigatoriamente o motivo da conclusão. O registro ficará disponível na
-              auditoria.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            <label htmlFor="motivo-ressalva" className="text-sm font-medium">
-              Motivo da conclusão <span className="text-destructive">*</span>
-            </label>
-            <Textarea
-              id="motivo-ressalva"
-              value={motivoRessalva}
-              onChange={(e) => setMotivoRessalva(e.target.value)}
-              placeholder="Ex.: itens não localizados após conferência física e validação com a liderança."
-              rows={5}
-              maxLength={1000}
-              autoFocus
-            />
-            <div className="text-right text-xs text-muted-foreground">
-              {motivoRessalva.trim().length}/1000
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDialogRessalvaAberto(false)}
-              disabled={concluirRessalvaMutation.isPending}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              className="bg-amber-600 text-white hover:bg-amber-700"
-              onClick={() => concluirRessalvaMutation.mutate()}
-              disabled={
-                motivoRessalva.trim().length < 5 ||
-                concluirRessalvaMutation.isPending
-              }
-            >
-              {concluirRessalvaMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <AlertTriangle className="mr-2 h-4 w-4" />
-              )}
-              Concluir com ressalva
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <RotaDetalheDialog
         rota={rotaDetalhe}
         onClose={() => setRotaDetalhe(null)}
@@ -1224,13 +1049,7 @@ type RotaResumo = {
   triados: number;
   pendentes: number;
   percentual: number;
-  status: "aberta" | "fechada" | "concluida_ressalva";
-  conclusaoRessalva?: {
-    motivo: string;
-    concluidaEm: string;
-    concluidaPor: string;
-    faltantes: number;
-  };
+  status: "aberta" | "fechada";
 };
 
 function RotasSelector({
@@ -1247,7 +1066,6 @@ function RotasSelector({
   loading: boolean;
 }) {
   const abertas = rotas.filter((r) => r.status === "aberta");
-  const ressalvas = rotas.filter((r) => r.status === "concluida_ressalva");
   const fechadas = rotas.filter((r) => r.status === "fechada");
   return (
     <Card className="p-4 md:p-6">
@@ -1264,9 +1082,6 @@ function RotasSelector({
           <Badge variant="outline" className="border-warning text-warning">
             {abertas.length} abertas
           </Badge>
-          <Badge variant="outline" className="border-amber-500 text-amber-700">
-            {ressalvas.length} com ressalva
-          </Badge>
           <Badge variant="outline" className="border-success text-success">
             {fechadas.length} fechadas
           </Badge>
@@ -1280,10 +1095,9 @@ function RotasSelector({
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-          {[...abertas, ...ressalvas, ...fechadas].map((r) => {
+          {[...abertas, ...fechadas].map((r) => {
             const isSel = r.rota === selecionada;
             const fechada = r.status === "fechada";
-            const comRessalva = r.status === "concluida_ressalva";
             return (
               <button
                 key={r.rota}
@@ -1298,11 +1112,9 @@ function RotasSelector({
                 className={`text-left rounded-md border p-3 transition-colors ${
                   isSel
                     ? "border-primary bg-primary/5 ring-2 ring-primary"
-                    : comRessalva
-                      ? "border-amber-500/70 bg-amber-50 hover:bg-amber-100"
-                      : fechada
-                        ? "border-success/50 bg-success/5 hover:bg-success/10"
-                        : "border-destructive/50 bg-destructive/10 hover:bg-destructive/15"
+                    : fechada
+                      ? "border-success/50 bg-success/5 hover:bg-success/10"
+                      : "border-destructive/50 bg-destructive/10 hover:bg-destructive/15"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -1310,14 +1122,12 @@ function RotasSelector({
                   <div className="flex items-center gap-1">
                     <Badge
                       className={`text-[10px] px-1.5 py-0 ${
-                        comRessalva
-                          ? "bg-amber-500 text-white"
-                          : fechada
-                            ? "bg-success text-success-foreground"
-                            : "bg-destructive text-destructive-foreground"
+                        fechada
+                          ? "bg-success text-success-foreground"
+                          : "bg-destructive text-destructive-foreground"
                       }`}
                     >
-                      {comRessalva ? "Com ressalva" : fechada ? "Fechada" : "Aberta"}
+                      {fechada ? "Fechada" : "Aberta"}
                     </Badge>
                     <span
                       role="button"
@@ -1341,11 +1151,9 @@ function RotasSelector({
                 <Progress
                   value={r.percentual}
                   className={`h-1.5 mt-2 ${
-                    comRessalva
-                      ? "bg-amber-200 [&>div]:bg-amber-500"
-                      : fechada
-                        ? "bg-success/20 [&>div]:bg-success"
-                        : "bg-destructive/20 [&>div]:bg-destructive"
+                    fechada
+                      ? "bg-success/20 [&>div]:bg-success"
+                      : "bg-destructive/20 [&>div]:bg-destructive"
                   }`}
                 />
               </button>
