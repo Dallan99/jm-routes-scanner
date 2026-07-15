@@ -18,6 +18,7 @@ import { Route as TvGerencialRouteImport } from './routes/tv.gerencial'
 import { Route as TvDashboardRouteImport } from './routes/tv.dashboard'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 import { Route as AuthenticatedTriagemRouteImport } from './routes/_authenticated/triagem'
+import { Route as AuthenticatedTransferenciasRouteImport } from './routes/_authenticated/transferencias'
 import { Route as AuthenticatedRecebimentoRouteImport } from './routes/_authenticated/recebimento'
 import { Route as AuthenticatedInventarioRouteImport } from './routes/_authenticated/inventario'
 import { Route as AuthenticatedInicioRouteImport } from './routes/_authenticated/inicio'
@@ -74,6 +75,12 @@ const AuthenticatedTriagemRoute = AuthenticatedTriagemRouteImport.update({
   path: '/triagem',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTransferenciasRoute =
+  AuthenticatedTransferenciasRouteImport.update({
+    id: '/transferencias',
+    path: '/transferencias',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRecebimentoRoute =
   AuthenticatedRecebimentoRouteImport.update({
     id: '/recebimento',
@@ -149,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
   '/triagem': typeof AuthenticatedTriagemRoute
+  '/transferencias': typeof AuthenticatedTransferenciasRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
   '/tv/gerencial': typeof TvGerencialRoute
@@ -170,6 +178,7 @@ export interface FileRoutesByTo {
   '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
   '/triagem': typeof AuthenticatedTriagemRoute
+  '/transferencias': typeof AuthenticatedTransferenciasRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
   '/tv/gerencial': typeof TvGerencialRoute
@@ -193,6 +202,7 @@ export interface FileRoutesById {
   '/_authenticated/inventario': typeof AuthenticatedInventarioRoute
   '/_authenticated/recebimento': typeof AuthenticatedRecebimentoRoute
   '/_authenticated/triagem': typeof AuthenticatedTriagemRoute
+  '/_authenticated/transferencias': typeof AuthenticatedTransferenciasRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
   '/tv/gerencial': typeof TvGerencialRoute
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/inventario'
     | '/recebimento'
     | '/triagem'
+    | '/transferencias'
     | '/usuarios'
     | '/tv/dashboard'
     | '/tv/gerencial'
@@ -237,6 +248,7 @@ export interface FileRouteTypes {
     | '/inventario'
     | '/recebimento'
     | '/triagem'
+    | '/transferencias'
     | '/usuarios'
     | '/tv/dashboard'
     | '/tv/gerencial'
@@ -259,6 +271,7 @@ export interface FileRouteTypes {
     | '/_authenticated/inventario'
     | '/_authenticated/recebimento'
     | '/_authenticated/triagem'
+    | '/_authenticated/transferencias'
     | '/_authenticated/usuarios'
     | '/tv/dashboard'
     | '/tv/gerencial'
@@ -335,6 +348,13 @@ declare module '@tanstack/react-router' {
       path: '/triagem'
       fullPath: '/triagem'
       preLoaderRoute: typeof AuthenticatedTriagemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/transferencias': {
+      id: '/_authenticated/transferencias'
+      path: '/transferencias'
+      fullPath: '/transferencias'
+      preLoaderRoute: typeof AuthenticatedTransferenciasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/recebimento': {
@@ -430,6 +450,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedInventarioRoute: typeof AuthenticatedInventarioRoute
   AuthenticatedRecebimentoRoute: typeof AuthenticatedRecebimentoRoute
   AuthenticatedTriagemRoute: typeof AuthenticatedTriagemRoute
+  AuthenticatedTransferenciasRoute: typeof AuthenticatedTransferenciasRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
 
@@ -446,6 +467,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedInventarioRoute: AuthenticatedInventarioRoute,
   AuthenticatedRecebimentoRoute: AuthenticatedRecebimentoRoute,
   AuthenticatedTriagemRoute: AuthenticatedTriagemRoute,
+  AuthenticatedTransferenciasRoute: AuthenticatedTransferenciasRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }
 
