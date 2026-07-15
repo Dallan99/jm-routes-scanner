@@ -272,6 +272,11 @@ function TriagemPage() {
     refetchInterval: 5000,
   });
 
+  const rotaAtual =
+    (rotas.data ?? []).find((r) => r.rota === rotaSelecionada) ?? null;
+  const rotaConcluidaRessalva =
+    rotaAtual?.status === "concluida_ressalva";
+
   // Se a rota selecionada bateu 100%, mantém aberta mas indica; se sumiu da lista, limpa.
   useEffect(() => {
     if (!rotaSelecionada || !rotas.data) return;
@@ -581,8 +586,6 @@ function TriagemPage() {
   const totalTri = resumo.data?.totalTriados ?? 0;
   const pendentes = resumo.data?.pendentes ?? 0;
   const pct = totalPrev ? Math.round((totalTri / totalPrev) * 100) : 0;
-  const rotaAtual = (rotas.data ?? []).find((r) => r.rota === rotaSelecionada) ?? null;
-  const rotaConcluidaRessalva = rotaAtual?.status === "concluida_ressalva";
 
   const elapsedMs = accumulatedMs + (startedAt && !paused ? now - startedAt : 0);
   const elapsed = Math.floor(elapsedMs / 1000);
