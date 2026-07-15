@@ -342,39 +342,57 @@ export const biparTriagem = createServerFn({ method: "POST" })
     // 4) Métricas por rota planejada
     // A operação confere por Rota Otimizada (coluna "Rota Otimizada" da planilha).
     const rotaCodigo = rotaEfetivaTriagem(escala) ?? "—";
-    const { supabaseAdmin } = await import(
-  "@/integrations/supabase/client.server",
-);
 
-const { data: rotaEncerradaComRessalva } = await supabaseAdmin
-  .from("audit_logs")
-  .select("id")
-  .eq("acao", "triagem.rota_concluida_ressalva")
-  .eq("entidade", "importacao_escala")
-  .eq("entidade_id", escala.importacao_id!)
-  .contains("detalhes", {
-    rota: rotaCodigo,
-  } as never)
-  .limit(1)
-  .maybeSingle();
+    /*
+     * Verifica se a rota foi concluída manualmente com ressalva.
+     * Uma falha isolada na auditoria não deve derrubar toda a bipagem.
+     */
+    try {
+      const { supabaseAdmin } = await import(
+        "@/integrations/supabase/client.server"
+      );
 
-if (rotaEncerradaComRessalva) {
-  const mensagem =
-    `A rota ${rotaCodigo} foi concluída com ressalva e está bloqueada para novas bipagens.`;
+      const { data: rotaEncerradaComRessalva, error: ressalvaErro } =
+        await supabaseAdmin
+          .from("audit_logs")
+          .select("id")
+          .eq("acao", "triagem.rota_concluida_ressalva")
+          .eq("entidade", "importacao_escala")
+          .eq("entidade_id", escala.importacao_id!)
+          .contains("detalhes", {
+            rota: rotaCodigo,
+          } as never)
+          .limit(1)
+          .maybeSingle();
 
-  await log(
-    "encerrada",
-    mensagem,
-    escala.base_id,
-    escala.id,
-  );
+      if (ressalvaErro) {
+        console.error(
+          "Falha ao verificar conclusão de rota com ressalva:",
+          ressalvaErro.message,
+        );
+      } else if (rotaEncerradaComRessalva) {
+        const mensagem =
+          `A rota ${rotaCodigo} foi concluída com ressalva e está bloqueada para novas bipagens.`;
 
-  return {
-    resultado: "encerrada",
-    mensagem,
-    hora,
-  };
-}
+        await log(
+          "encerrada",
+          mensagem,
+          escala.base_id,
+          escala.id,
+        );
+
+        return {
+          resultado: "encerrada",
+          mensagem,
+          hora,
+        };
+      }
+    } catch (erro) {
+      console.error(
+        "Não foi possível verificar a conclusão da rota com ressalva:",
+        erro,
+      );
+    }
 
     // 4.a) Se o operador escolheu uma rota, o shipment tem que pertencer a ela
     if (data.rotaSelecionada && rotaCodigo !== data.rotaSelecionada) {
@@ -493,111 +511,153 @@ export const triagemRotasDoDia = createServerFn({ method: "GET" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: impAtiva } = await supabase
+
+    type RotaTriagemDia = {
+      rota: string;
+      previstos: number;
+      triados: number;
+      pendentes: number;
+      percentual: number;
+      status: "aberta" | "fechada" | "concluida_ressalva";
+      conclusaoRessalva?: {
+        motivo: string;
+        concluidaEm: string;
+        concluidaPor: string;
+        faltantes: number;
+      };
+    };
+
+    const { data: impAtiva, error: importacaoErro } = await supabase
       .from("importacoes_escala")
       .select("id")
       .eq("base_id", data.baseId)
       .eq("data_operacional", data.dataOperacional)
       .eq("ativa", true)
       .maybeSingle();
-    if (!impAtiva)
-      return [] as Array<{
-        rota: string;
-        previstos: number;
-        triados: number;
-        pendentes: number;
-        percentual: number;
-        status: "aberta" | "fechada" | "concluida_ressalva";
-conclusaoRessalva?: {
-  motivo: string;
-  concluidaEm: string;
-  concluidaPor: string;
-  faltantes: number;
-};
-      }>;
 
-    // PostgREST limita a 1000 linhas por página. Como a planilha pode ter
-    // milhares de shipments, precisamos paginar para não perder rotas.
-    const PAGE = 1000;
+    if (importacaoErro) {
+      throw new Error(importacaoErro.message);
+    }
+
+    if (!impAtiva) {
+      return [] as RotaTriagemDia[];
+    }
+
+    const PAGE_SIZE = 1000;
+
     const linhas: Array<{
       shipment: string | null;
       planejada: string | null;
       otimizada: string | null;
       triado: boolean | null;
     }> = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data: page, error } = await supabase
+
+    for (let inicio = 0; ; inicio += PAGE_SIZE) {
+      const { data: pagina, error: paginaErro } = await supabase
         .from("escalas")
         .select("shipment, planejada, otimizada, triado")
         .eq("importacao_id", impAtiva.id)
         .order("id", { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw new Error(error.message);
-      if (!page || page.length === 0) break;
-      linhas.push(...page);
-      if (page.length < PAGE) break;
+        .range(inicio, inicio + PAGE_SIZE - 1);
+
+      if (paginaErro) {
+        throw new Error(paginaErro.message);
+      }
+
+      if (!pagina || pagina.length === 0) {
+        break;
+      }
+
+      linhas.push(...pagina);
+
+      if (pagina.length < PAGE_SIZE) {
+        break;
+      }
     }
 
-    const resumo = resumirRotasTriagem(linhas);
+    const resumo = resumirRotasTriagem(linhas) as RotaTriagemDia[];
 
-const { supabaseAdmin } = await import(
-  "@/integrations/supabase/client.server"
-);
+    try {
+      const { supabaseAdmin } = await import(
+        "@/integrations/supabase/client.server"
+      );
 
-const { data: conclusoes } = await supabaseAdmin
-  .from("audit_logs")
-  .select("user_id, created_at, detalhes")
-  .eq("acao", "triagem.rota_concluida_ressalva")
-  .eq("entidade", "importacao_escala")
-  .eq("entidade_id", impAtiva.id)
-  .order("created_at", { ascending: false });
+      const { data: conclusoes, error: conclusoesErro } =
+        await supabaseAdmin
+          .from("audit_logs")
+          .select("user_id, created_at, detalhes")
+          .eq("acao", "triagem.rota_concluida_ressalva")
+          .eq("entidade", "importacao_escala")
+          .eq("entidade_id", impAtiva.id)
+          .order("created_at", { ascending: false });
 
-const conclusoesPorRota = new Map<
-  string,
-  {
-    motivo: string;
-    concluidaEm: string;
-    concluidaPor: string;
-    faltantes: number;
-  }
->();
+      if (conclusoesErro) {
+        console.error(
+          "Falha ao consultar conclusões de rota com ressalva:",
+          conclusoesErro.message,
+        );
+        return resumo;
+      }
 
-for (const registro of conclusoes ?? []) {
-  const detalhes = (registro.detalhes ??
-    {}) as Record<string, unknown>;
+      const conclusoesPorRota = new Map<
+        string,
+        {
+          motivo: string;
+          concluidaEm: string;
+          concluidaPor: string;
+          faltantes: number;
+        }
+      >();
 
-  const rota =
-    typeof detalhes.rota === "string"
-      ? detalhes.rota
-      : null;
+      for (const registro of conclusoes ?? []) {
+        const detalhes = (registro.detalhes ?? {}) as Record<
+          string,
+          unknown
+        >;
 
-  if (!rota || conclusoesPorRota.has(rota)) {
-    continue;
-  }
+        const rota =
+          typeof detalhes.rota === "string"
+            ? detalhes.rota.trim()
+            : "";
 
-  conclusoesPorRota.set(rota, {
-    motivo: String(
-      detalhes.motivo ?? "Motivo não informado",
-    ),
-    concluidaEm: registro.created_at,
-    concluidaPor: registro.user_id ?? "Usuário não identificado",
-    faltantes: Number(detalhes.faltantes ?? 0),
-  });
-}
+        if (!rota || conclusoesPorRota.has(rota)) {
+          continue;
+        }
 
-return resumo.map((rota) => {
-  const ressalva = conclusoesPorRota.get(rota.rota);
+        conclusoesPorRota.set(rota, {
+          motivo:
+            typeof detalhes.motivo === "string" &&
+            detalhes.motivo.trim().length > 0
+              ? detalhes.motivo
+              : "Motivo não informado",
+          concluidaEm:
+            registro.created_at ?? new Date().toISOString(),
+          concluidaPor:
+            registro.user_id ?? "Usuário não identificado",
+          faltantes: Number(detalhes.faltantes ?? 0),
+        });
+      }
 
-  if (!ressalva) {
-    return rota;
-  }
+      return resumo.map((rota) => {
+        const ressalva = conclusoesPorRota.get(rota.rota);
 
-  return {
-    ...rota,
-    status: "concluida_ressalva" as const,
-    conclusaoRessalva: ressalva,
-  };
-});
+        if (!ressalva) {
+          return rota;
+        }
+
+        return {
+          ...rota,
+          status: "concluida_ressalva" as const,
+          conclusaoRessalva: ressalva,
+        };
+      });
+    } catch (erro) {
+      console.error(
+        "Não foi possível carregar as ressalvas das rotas:",
+        erro,
+      );
+      return resumo;
+    }
   });
 
 export const localizarShipmentTriagem = createServerFn({ method: "POST" })
