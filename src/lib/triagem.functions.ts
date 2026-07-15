@@ -55,6 +55,191 @@ export type LocalizacaoShipmentTriagem =
       triado: boolean;
     }
   | { encontrado: false; shipment: string; mensagem: string };
+  
+  const concluirRotaRessalvaSchema = z.object({
+  baseId: z.string().uuid(),
+  dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  rota: z.string().trim().min(1).max(120),
+  motivo: z
+    .string()
+    .trim()
+    .min(5, "Informe um motivo com pelo menos 5 caracteres.")
+    .max(1000),
+});
+
+export type ConclusaoRotaRessalva = {
+  rota: string;
+  motivo: string;
+  previstos: number;
+  triados: number;
+  faltantes: number;
+  concluidaEm: string;
+  concluidaPor: string;
+};
+
+export const concluirRotaComRessalva = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    concluirRotaRessalvaSchema.parse(data),
+  )
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<ConclusaoRotaRessalva> => {
+      const { supabase, userId } = context;
+
+      const { supabaseAdmin } = await import(
+        "@/integrations/supabase/client.server"
+      );
+
+      const { auditRequestMeta } = await import("./audit.server");
+
+      const { data: importacao, error: importacaoErro } =
+        await supabase
+          .from("importacoes_escala")
+          .select("id")
+          .eq("base_id", data.baseId)
+          .eq("data_operacional", data.dataOperacional)
+          .eq("ativa", true)
+          .maybeSingle();
+
+      if (importacaoErro) {
+        throw new Error(importacaoErro.message);
+      }
+
+      if (!importacao) {
+        throw new Error(
+          "Não existe importação ativa para esta base e dia operacional.",
+        );
+      }
+
+      const PAGE_SIZE = 1000;
+
+      const linhas: Array<{
+        shipment: string | null;
+        planejada: string | null;
+        otimizada: string | null;
+        triado: boolean | null;
+      }> = [];
+
+      for (let inicio = 0; ; inicio += PAGE_SIZE) {
+        const { data: pagina, error } = await supabase
+          .from("escalas")
+          .select("shipment, planejada, otimizada, triado")
+          .eq("importacao_id", importacao.id)
+          .order("id", { ascending: true })
+          .range(inicio, inicio + PAGE_SIZE - 1);
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        if (!pagina?.length) {
+          break;
+        }
+
+        linhas.push(...pagina);
+
+        if (pagina.length < PAGE_SIZE) {
+          break;
+        }
+      }
+
+      const linhasDaRota = linhas.filter(
+        (linha) =>
+          linha.shipment?.trim() &&
+          rotaEfetivaTriagem(linha) === data.rota,
+      );
+
+      const previstos = linhasDaRota.length;
+      const triados = linhasDaRota.filter(
+        (linha) => Boolean(linha.triado),
+      ).length;
+
+      const faltantes = Math.max(previstos - triados, 0);
+
+      if (previstos === 0) {
+        throw new Error("Rota não encontrada na importação ativa.");
+      }
+
+      if (faltantes === 0) {
+        throw new Error(
+          "Esta rota já está 100% concluída e não precisa de ressalva.",
+        );
+      }
+
+      const { data: conclusaoExistente } = await supabaseAdmin
+        .from("audit_logs")
+        .select("user_id, created_at, detalhes")
+        .eq("acao", "triagem.rota_concluida_ressalva")
+        .eq("entidade", "importacao_escala")
+        .eq("entidade_id", importacao.id)
+        .contains("detalhes", {
+          rota: data.rota,
+        } as never)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (conclusaoExistente) {
+        const detalhes = (conclusaoExistente.detalhes ??
+          {}) as Record<string, unknown>;
+
+        return {
+          rota: data.rota,
+          motivo: String(detalhes.motivo ?? data.motivo),
+          previstos: Number(detalhes.previstos ?? previstos),
+          triados: Number(detalhes.triados ?? triados),
+          faltantes: Number(detalhes.faltantes ?? faltantes),
+          concluidaEm: conclusaoExistente.created_at,
+          concluidaPor: conclusaoExistente.user_id ?? userId,
+        };
+      }
+
+      const concluidaEm = new Date().toISOString();
+      const { ip, user_agent } = auditRequestMeta();
+
+      const { error: auditoriaErro } = await supabaseAdmin
+        .from("audit_logs")
+        .insert({
+          user_id: userId,
+          acao: "triagem.rota_concluida_ressalva",
+          entidade: "importacao_escala",
+          entidade_id: importacao.id,
+          detalhes: {
+            rota: data.rota,
+            motivo: data.motivo,
+            previstos,
+            triados,
+            faltantes,
+            base_id: data.baseId,
+            data_operacional: data.dataOperacional,
+            status: "concluida_ressalva",
+          } as never,
+          ip,
+          user_agent,
+        });
+
+      if (auditoriaErro) {
+        throw new Error(
+          `Não foi possível registrar a conclusão: ${auditoriaErro.message}`,
+        );
+      }
+
+      return {
+        rota: data.rota,
+        motivo: data.motivo,
+        previstos,
+        triados,
+        faltantes,
+        concluidaEm,
+        concluidaPor: userId,
+      };
+    },
+  );
 
 /**
  * Bipagem de Triagem — trabalha em cima da PLANILHA importada (escala).
@@ -157,6 +342,39 @@ export const biparTriagem = createServerFn({ method: "POST" })
     // 4) Métricas por rota planejada
     // A operação confere por Rota Otimizada (coluna "Rota Otimizada" da planilha).
     const rotaCodigo = rotaEfetivaTriagem(escala) ?? "—";
+    const { supabaseAdmin } = await import(
+  "@/integrations/supabase/client.server",
+);
+
+const { data: rotaEncerradaComRessalva } = await supabaseAdmin
+  .from("audit_logs")
+  .select("id")
+  .eq("acao", "triagem.rota_concluida_ressalva")
+  .eq("entidade", "importacao_escala")
+  .eq("entidade_id", escala.importacao_id!)
+  .contains("detalhes", {
+    rota: rotaCodigo,
+  } as never)
+  .limit(1)
+  .maybeSingle();
+
+if (rotaEncerradaComRessalva) {
+  const mensagem =
+    `A rota ${rotaCodigo} foi concluída com ressalva e está bloqueada para novas bipagens.`;
+
+  await log(
+    "encerrada",
+    mensagem,
+    escala.base_id,
+    escala.id,
+  );
+
+  return {
+    resultado: "encerrada",
+    mensagem,
+    hora,
+  };
+}
 
     // 4.a) Se o operador escolheu uma rota, o shipment tem que pertencer a ela
     if (data.rotaSelecionada && rotaCodigo !== data.rotaSelecionada) {
@@ -289,7 +507,13 @@ export const triagemRotasDoDia = createServerFn({ method: "GET" })
         triados: number;
         pendentes: number;
         percentual: number;
-        status: "aberta" | "fechada";
+        status: "aberta" | "fechada" | "concluida_ressalva";
+conclusaoRessalva?: {
+  motivo: string;
+  concluidaEm: string;
+  concluidaPor: string;
+  faltantes: number;
+};
       }>;
 
     // PostgREST limita a 1000 linhas por página. Como a planilha pode ter
@@ -314,7 +538,66 @@ export const triagemRotasDoDia = createServerFn({ method: "GET" })
       if (page.length < PAGE) break;
     }
 
-    return resumirRotasTriagem(linhas);
+    const resumo = resumirRotasTriagem(linhas);
+
+const { supabaseAdmin } = await import(
+  "@/integrations/supabase/client.server"
+);
+
+const { data: conclusoes } = await supabaseAdmin
+  .from("audit_logs")
+  .select("user_id, created_at, detalhes")
+  .eq("acao", "triagem.rota_concluida_ressalva")
+  .eq("entidade", "importacao_escala")
+  .eq("entidade_id", impAtiva.id)
+  .order("created_at", { ascending: false });
+
+const conclusoesPorRota = new Map<
+  string,
+  {
+    motivo: string;
+    concluidaEm: string;
+    concluidaPor: string;
+    faltantes: number;
+  }
+>();
+
+for (const registro of conclusoes ?? []) {
+  const detalhes = (registro.detalhes ??
+    {}) as Record<string, unknown>;
+
+  const rota =
+    typeof detalhes.rota === "string"
+      ? detalhes.rota
+      : null;
+
+  if (!rota || conclusoesPorRota.has(rota)) {
+    continue;
+  }
+
+  conclusoesPorRota.set(rota, {
+    motivo: String(
+      detalhes.motivo ?? "Motivo não informado",
+    ),
+    concluidaEm: registro.created_at,
+    concluidaPor: registro.user_id ?? "Usuário não identificado",
+    faltantes: Number(detalhes.faltantes ?? 0),
+  });
+}
+
+return resumo.map((rota) => {
+  const ressalva = conclusoesPorRota.get(rota.rota);
+
+  if (!ressalva) {
+    return rota;
+  }
+
+  return {
+    ...rota,
+    status: "concluida_ressalva" as const,
+    conclusaoRessalva: ressalva,
+  };
+});
   });
 
 export const localizarShipmentTriagem = createServerFn({ method: "POST" })
