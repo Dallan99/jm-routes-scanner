@@ -9,13 +9,49 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { beepError, beepOk, beepWarn } from "@/lib/scanner-sound";
-import { CheckCircle2, AlertTriangle, XCircle, ScanLine, ArrowRight, Building2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, ScanLine, ArrowRight, Building2, Download, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { abrirRelatorio, baixarCSV } from "@/lib/relatorio";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { RequireBaseOperacional } from "@/components/base-operacional-selector";
+import { useBaseOperacional } from "@/lib/base-operacional-context";
 
 export const Route = createFileRoute("/_authenticated/recebimento")({
   head: () => ({ meta: [{ title: "Recebimento — JM Transportes" }] }),
-  component: RecebimentoPage,
+  component: RecebimentoGuard,
 });
+
+function RecebimentoGuard() {
+  return (
+    <RequireBaseOperacional
+      titulo="Recebimento"
+      descricao="Selecione a Base e o Dia Operacional. Cada bipe será carimbado com esta seleção."
+    >
+      <RecebimentoComHeader />
+    </RequireBaseOperacional>
+  );
+}
+
+function RecebimentoComHeader() {
+  const { base, diaOperacional } = useBaseOperacional();
+  return (
+    <>
+      <div className="border-b bg-muted/30 px-4 md:px-6 py-2 flex items-center gap-3 flex-wrap text-xs">
+        <span className="font-display font-semibold text-sm">Recebimento</span>
+        <span className="text-muted-foreground">·</span>
+        <span>Base: <b>{base?.nome ?? "—"}</b>{base?.codigo && <span className="font-mono text-muted-foreground"> ({base.codigo})</span>}</span>
+        <span className="text-muted-foreground">·</span>
+        <span>Dia Operacional: <b className="font-mono">{diaOperacional ? new Date(diaOperacional + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</b></span>
+      </div>
+      <RecebimentoPage />
+    </>
+  );
+}
 
 const DEDUPE_MS = 700; // ignora bipagens repetidas idênticas dentro deste intervalo
 
@@ -100,6 +136,40 @@ function RecebimentoPage() {
 
   const flashClass = flash === "ok" ? "scan-flash-ok" : flash === "error" ? "scan-flash-error" : "";
 
+  const relatorioConfig = () => {
+    const linhas = lista.data ?? [];
+    type Linha = (typeof linhas)[number];
+    const ok = linhas.filter((r) => r.resultado === "ok").length;
+    const dup = linhas.filter((r) => r.resultado === "duplicado").length;
+    const err = linhas.length - ok - dup;
+    return {
+      titulo: "Relatório de Recebimento",
+      subtitulo: `${linhas.length} leituras · ${ok} OK · ${dup} duplicadas · ${err} com erro`,
+      nomeArquivo: `recebimento_${new Date().toISOString().slice(0, 10)}`,
+      kpis: [
+        { label: "Total leituras", value: linhas.length },
+        { label: "OK", value: ok },
+        { label: "Duplicadas", value: dup },
+        { label: "Com erro", value: err },
+      ],
+      colunas: [
+        { header: "Hora", value: (r: Linha) => new Date(r.created_at).toLocaleTimeString("pt-BR") },
+        { header: "Código", value: (r: Linha) => r.codigo_bipado },
+        { header: "Rota", value: (r: Linha) => r.rotas?.codigo ?? "-" },
+        { header: "Resultado", value: (r: Linha) => r.resultado },
+        { header: "Mensagem", value: (r: Linha) => r.mensagem ?? "" },
+      ],
+      linhas,
+    };
+  };
+
+  const baixarPDF = () => {
+    const opened = abrirRelatorio({ ...relatorioConfig(), autoPrint: true });
+    if (!opened) toast.error("Bloqueador de pop-up impediu abrir o relatório.");
+  };
+  const baixarCsv = () => baixarCSV(relatorioConfig());
+  const imprimirRel = baixarPDF;
+
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
       {/* Campo de leitura */}
@@ -108,9 +178,29 @@ function RecebimentoPage() {
           <div className="w-10 h-10 rounded-md brand-gradient flex items-center justify-center">
             <ScanLine className="w-5 h-5 text-[var(--brand-yellow)]" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="font-display text-xl md:text-2xl font-bold">Bipagem de Etiquetas</h1>
             <p className="text-xs md:text-sm text-muted-foreground">Aponte o leitor para a etiqueta. O código será processado automaticamente.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm" className="gap-2">
+                  <Download className="w-4 h-4" /> Baixar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={baixarPDF}>
+                  <Printer className="w-4 h-4 mr-2" /> Baixar PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={baixarCsv}>
+                  <Download className="w-4 h-4 mr-2" /> Baixar CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="secondary" size="sm" className="gap-2" onClick={imprimirRel}>
+              <Printer className="w-4 h-4" /> Imprimir
+            </Button>
           </div>
         </div>
         <form

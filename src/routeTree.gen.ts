@@ -9,21 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TvRouteImport } from './routes/tv'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TvGerencialRouteImport } from './routes/tv.gerencial'
+import { Route as TvDashboardRouteImport } from './routes/tv.dashboard'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 import { Route as AuthenticatedTriagemRouteImport } from './routes/_authenticated/triagem'
 import { Route as AuthenticatedRecebimentoRouteImport } from './routes/_authenticated/recebimento'
+import { Route as AuthenticatedInventarioRouteImport } from './routes/_authenticated/inventario'
+import { Route as AuthenticatedInicioRouteImport } from './routes/_authenticated/inicio'
 import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authenticated/historico'
 import { Route as AuthenticatedGerencialRouteImport } from './routes/_authenticated/gerencial'
+import { Route as AuthenticatedDevolucoesRouteImport } from './routes/_authenticated/devolucoes'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
 import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/_authenticated/configuracoes'
 import { Route as AuthenticatedBasesRouteImport } from './routes/_authenticated/bases'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 
+const TvRoute = TvRouteImport.update({
+  id: '/tv',
+  path: '/tv',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -43,6 +54,16 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TvGerencialRoute = TvGerencialRouteImport.update({
+  id: '/gerencial',
+  path: '/gerencial',
+  getParentRoute: () => TvRoute,
+} as any)
+const TvDashboardRoute = TvDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => TvRoute,
+} as any)
 const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
   id: '/usuarios',
   path: '/usuarios',
@@ -59,6 +80,16 @@ const AuthenticatedRecebimentoRoute =
     path: '/recebimento',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedInventarioRoute = AuthenticatedInventarioRouteImport.update({
+  id: '/inventario',
+  path: '/inventario',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedInicioRoute = AuthenticatedInicioRouteImport.update({
+  id: '/inicio',
+  path: '/inicio',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedHistoricoRoute = AuthenticatedHistoricoRouteImport.update({
   id: '/historico',
   path: '/historico',
@@ -67,6 +98,11 @@ const AuthenticatedHistoricoRoute = AuthenticatedHistoricoRouteImport.update({
 const AuthenticatedGerencialRoute = AuthenticatedGerencialRouteImport.update({
   id: '/gerencial',
   path: '/gerencial',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDevolucoesRoute = AuthenticatedDevolucoesRouteImport.update({
+  id: '/devolucoes',
+  path: '/devolucoes',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -100,31 +136,43 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/tv': typeof TvRouteWithChildren
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/bases': typeof AuthenticatedBasesRoute
   '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/contagem': typeof AuthenticatedContagemRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/devolucoes': typeof AuthenticatedDevolucoesRoute
   '/gerencial': typeof AuthenticatedGerencialRoute
   '/historico': typeof AuthenticatedHistoricoRoute
+  '/inicio': typeof AuthenticatedInicioRoute
+  '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
   '/triagem': typeof AuthenticatedTriagemRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/tv/dashboard': typeof TvDashboardRoute
+  '/tv/gerencial': typeof TvGerencialRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/tv': typeof TvRouteWithChildren
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/bases': typeof AuthenticatedBasesRoute
   '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/contagem': typeof AuthenticatedContagemRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/devolucoes': typeof AuthenticatedDevolucoesRoute
   '/gerencial': typeof AuthenticatedGerencialRoute
   '/historico': typeof AuthenticatedHistoricoRoute
+  '/inicio': typeof AuthenticatedInicioRoute
+  '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
   '/triagem': typeof AuthenticatedTriagemRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/tv/dashboard': typeof TvDashboardRoute
+  '/tv/gerencial': typeof TvGerencialRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -132,16 +180,22 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/tv': typeof TvRouteWithChildren
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/bases': typeof AuthenticatedBasesRoute
   '/_authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/_authenticated/contagem': typeof AuthenticatedContagemRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/devolucoes': typeof AuthenticatedDevolucoesRoute
   '/_authenticated/gerencial': typeof AuthenticatedGerencialRoute
   '/_authenticated/historico': typeof AuthenticatedHistoricoRoute
+  '/_authenticated/inicio': typeof AuthenticatedInicioRoute
+  '/_authenticated/inventario': typeof AuthenticatedInventarioRoute
   '/_authenticated/recebimento': typeof AuthenticatedRecebimentoRoute
   '/_authenticated/triagem': typeof AuthenticatedTriagemRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
+  '/tv/dashboard': typeof TvDashboardRoute
+  '/tv/gerencial': typeof TvGerencialRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -149,47 +203,65 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/reset-password'
+    | '/tv'
     | '/auditoria'
     | '/bases'
     | '/configuracoes'
     | '/contagem'
     | '/dashboard'
+    | '/devolucoes'
     | '/gerencial'
     | '/historico'
+    | '/inicio'
+    | '/inventario'
     | '/recebimento'
     | '/triagem'
     | '/usuarios'
+    | '/tv/dashboard'
+    | '/tv/gerencial'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/reset-password'
+    | '/tv'
     | '/auditoria'
     | '/bases'
     | '/configuracoes'
     | '/contagem'
     | '/dashboard'
+    | '/devolucoes'
     | '/gerencial'
     | '/historico'
+    | '/inicio'
+    | '/inventario'
     | '/recebimento'
     | '/triagem'
     | '/usuarios'
+    | '/tv/dashboard'
+    | '/tv/gerencial'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/reset-password'
+    | '/tv'
     | '/_authenticated/auditoria'
     | '/_authenticated/bases'
     | '/_authenticated/configuracoes'
     | '/_authenticated/contagem'
     | '/_authenticated/dashboard'
+    | '/_authenticated/devolucoes'
     | '/_authenticated/gerencial'
     | '/_authenticated/historico'
+    | '/_authenticated/inicio'
+    | '/_authenticated/inventario'
     | '/_authenticated/recebimento'
     | '/_authenticated/triagem'
     | '/_authenticated/usuarios'
+    | '/tv/dashboard'
+    | '/tv/gerencial'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -197,10 +269,18 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  TvRoute: typeof TvRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tv': {
+      id: '/tv'
+      path: '/tv'
+      fullPath: '/tv'
+      preLoaderRoute: typeof TvRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -229,6 +309,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tv/gerencial': {
+      id: '/tv/gerencial'
+      path: '/gerencial'
+      fullPath: '/tv/gerencial'
+      preLoaderRoute: typeof TvGerencialRouteImport
+      parentRoute: typeof TvRoute
+    }
+    '/tv/dashboard': {
+      id: '/tv/dashboard'
+      path: '/dashboard'
+      fullPath: '/tv/dashboard'
+      preLoaderRoute: typeof TvDashboardRouteImport
+      parentRoute: typeof TvRoute
+    }
     '/_authenticated/usuarios': {
       id: '/_authenticated/usuarios'
       path: '/usuarios'
@@ -250,6 +344,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRecebimentoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/inventario': {
+      id: '/_authenticated/inventario'
+      path: '/inventario'
+      fullPath: '/inventario'
+      preLoaderRoute: typeof AuthenticatedInventarioRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/inicio': {
+      id: '/_authenticated/inicio'
+      path: '/inicio'
+      fullPath: '/inicio'
+      preLoaderRoute: typeof AuthenticatedInicioRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/historico': {
       id: '/_authenticated/historico'
       path: '/historico'
@@ -262,6 +370,13 @@ declare module '@tanstack/react-router' {
       path: '/gerencial'
       fullPath: '/gerencial'
       preLoaderRoute: typeof AuthenticatedGerencialRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/devolucoes': {
+      id: '/_authenticated/devolucoes'
+      path: '/devolucoes'
+      fullPath: '/devolucoes'
+      preLoaderRoute: typeof AuthenticatedDevolucoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -308,8 +423,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRoute
   AuthenticatedContagemRoute: typeof AuthenticatedContagemRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDevolucoesRoute: typeof AuthenticatedDevolucoesRoute
   AuthenticatedGerencialRoute: typeof AuthenticatedGerencialRoute
   AuthenticatedHistoricoRoute: typeof AuthenticatedHistoricoRoute
+  AuthenticatedInicioRoute: typeof AuthenticatedInicioRoute
+  AuthenticatedInventarioRoute: typeof AuthenticatedInventarioRoute
   AuthenticatedRecebimentoRoute: typeof AuthenticatedRecebimentoRoute
   AuthenticatedTriagemRoute: typeof AuthenticatedTriagemRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
@@ -321,8 +439,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRoute,
   AuthenticatedContagemRoute: AuthenticatedContagemRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDevolucoesRoute: AuthenticatedDevolucoesRoute,
   AuthenticatedGerencialRoute: AuthenticatedGerencialRoute,
   AuthenticatedHistoricoRoute: AuthenticatedHistoricoRoute,
+  AuthenticatedInicioRoute: AuthenticatedInicioRoute,
+  AuthenticatedInventarioRoute: AuthenticatedInventarioRoute,
   AuthenticatedRecebimentoRoute: AuthenticatedRecebimentoRoute,
   AuthenticatedTriagemRoute: AuthenticatedTriagemRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
@@ -331,12 +452,35 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface TvRouteChildren {
+  TvDashboardRoute: typeof TvDashboardRoute
+  TvGerencialRoute: typeof TvGerencialRoute
+}
+
+const TvRouteChildren: TvRouteChildren = {
+  TvDashboardRoute: TvDashboardRoute,
+  TvGerencialRoute: TvGerencialRoute,
+}
+
+const TvRouteWithChildren = TvRoute._addFileChildren(TvRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  TvRoute: TvRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

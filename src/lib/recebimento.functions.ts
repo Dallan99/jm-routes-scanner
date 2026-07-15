@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
@@ -50,6 +49,7 @@ export const bipar = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => bipSchema.parse(data))
   .handler(async ({ data, context }): Promise<BipResult> => {
     const { supabase, userId } = context;
+    const { auditRequestMeta, registrarAuditInterno } = await import("./audit.server");
     const now = new Date();
     const hora = now.toISOString();
 
@@ -62,12 +62,7 @@ export const bipar = createServerFn({ method: "POST" })
     const baseOperadorId = perfil?.base_id ?? null;
 
     // Captura IP / UA
-    const req = getRequest();
-    const ip =
-      req?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      req?.headers.get("cf-connecting-ip") ??
-      null;
-    const userAgent = req?.headers.get("user-agent") ?? null;
+    const { ip, user_agent: userAgent } = auditRequestMeta();
     const tempo = data.tempoDesdeUltimaMs ?? null;
 
     async function logResult(
@@ -88,6 +83,12 @@ export const bipar = createServerFn({ method: "POST" })
         ip,
         user_agent: userAgent,
         tempo_desde_ultima_ms: tempo,
+      });
+      await registrarAuditInterno(supabase, userId, {
+        acao: `recebimento.${resultado}`,
+        entidade: "rota",
+        entidade_id: rotaId ?? volumeId ?? null,
+        detalhes: { codigo: data.codigo, mensagem, base_id: baseId },
       });
     }
 
@@ -279,12 +280,30 @@ export const meuPerfil = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const [{ data: profile }, { data: roles }] = await Promise.all([
+    const [{ data: profile }, { data: roles }, { data: extras }] = await Promise.all([
       supabase.from("profiles").select("id, nome, email, matricula, base_id, bases(codigo, nome)").eq("id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
+      supabase.from("user_bases").select("base_id, bases(id, codigo, nome, cidade)").eq("user_id", userId),
     ]);
+    const rolesArr = (roles ?? []).map((r) => r.role);
+    const acessoTotal = rolesArr.includes("admin") || rolesArr.includes("gerente");
+    const basesPermitidasMap = new Map<string, { id: string; codigo: string; nome: string; cidade: string | null }>();
+    if (profile?.base_id && profile.bases) {
+      basesPermitidasMap.set(profile.base_id, {
+        id: profile.base_id,
+        codigo: (profile.bases as { codigo: string }).codigo,
+        nome: (profile.bases as { nome: string }).nome,
+        cidade: null,
+      });
+    }
+    (extras ?? []).forEach((e) => {
+      const b = e.bases as { id: string; codigo: string; nome: string; cidade: string | null } | null;
+      if (b?.id) basesPermitidasMap.set(b.id, b);
+    });
     return {
       profile,
-      roles: (roles ?? []).map((r) => r.role),
+      roles: rolesArr,
+      acessoTotal,
+      basesPermitidas: Array.from(basesPermitidasMap.values()),
     };
   });

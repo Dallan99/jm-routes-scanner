@@ -118,6 +118,13 @@ export const criarUsuario = createServerFn({ method: "POST" })
       await supabaseAdmin.from("user_roles").delete().eq("user_id", uid).eq("role", "operador");
       await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
     }
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: "usuario.criado",
+      entidade: "usuario",
+      entidade_id: uid,
+      detalhes: { email: data.email, nome: data.nome, role: data.role, base_id: data.base_id ?? null },
+    });
     return { ok: true, id: uid };
   });
 
@@ -150,6 +157,13 @@ export const atualizarUsuario = createServerFn({ method: "POST" })
       .from("user_roles")
       .insert({ user_id: data.user_id, role: data.role });
     if (rErr) throw new Error(rErr.message);
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: "usuario.alterado",
+      entidade: "usuario",
+      entidade_id: data.user_id,
+      detalhes: { matricula: data.matricula ?? null, base_id: data.base_id ?? null, role: data.role },
+    });
     return { ok: true };
   });
 
@@ -169,6 +183,13 @@ export const setUsuarioAtivo = createServerFn({ method: "POST" })
     await supabaseAdmin.auth.admin.updateUserById(data.user_id, {
       ban_duration: data.ativo ? "none" : "876000h",
     });
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: data.ativo ? "usuario.ativado" : "usuario.desativado",
+      entidade: "usuario",
+      entidade_id: data.user_id,
+      detalhes: null,
+    });
     return { ok: true };
   });
 
@@ -184,6 +205,13 @@ export const resetSenhaUsuario = createServerFn({ method: "POST" })
       password: data.senha,
     });
     if (error) throw new Error(error.message);
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: "usuario.senha_resetada",
+      entidade: "usuario",
+      entidade_id: data.user_id,
+      detalhes: null,
+    });
     return { ok: true };
   });
 
@@ -202,6 +230,13 @@ export const excluirUsuario = createServerFn({ method: "POST" })
     await supabaseAdmin.from("user_roles").delete().eq("user_id", data.user_id);
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
     if (error) throw new Error(error.message);
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: "usuario.excluido",
+      entidade: "usuario",
+      entidade_id: data.user_id,
+      detalhes: null,
+    });
     return { ok: true };
   });
 
@@ -215,4 +250,47 @@ export const listarBasesUsuario = createServerFn({ method: "GET" })
       .order("codigo");
     if (error) throw new Error(error.message);
     return data ?? [];
+  });
+
+const listUserBasesSchema = z.object({ user_id: z.string().uuid() });
+
+export const listarUserBases = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => listUserBasesSchema.parse(d))
+  .handler(async ({ data, context }): Promise<string[]> => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows, error } = await supabaseAdmin
+      .from("user_bases")
+      .select("base_id")
+      .eq("user_id", data.user_id);
+    if (error) throw new Error(error.message);
+    return (rows ?? []).map((r: { base_id: string }) => r.base_id);
+  });
+
+const setUserBasesSchema = z.object({
+  user_id: z.string().uuid(),
+  base_ids: z.array(z.string().uuid()),
+});
+
+export const setUserBases = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => setUserBasesSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("user_bases").delete().eq("user_id", data.user_id);
+    if (data.base_ids.length > 0) {
+      const rows = data.base_ids.map((base_id) => ({ user_id: data.user_id, base_id }));
+      const { error } = await supabaseAdmin.from("user_bases").insert(rows);
+      if (error) throw new Error(error.message);
+    }
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: "usuario.bases_atualizadas",
+      entidade: "usuario",
+      entidade_id: data.user_id,
+      detalhes: { base_ids: data.base_ids },
+    });
+    return { ok: true };
   });

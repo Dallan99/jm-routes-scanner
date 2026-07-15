@@ -33,6 +33,37 @@ export type GerencialData = {
   comparativo: { operador: string; hoje: number; semana: number; mes: number }[];
 };
 
+export type RotaBaseRow = {
+  base_id: string;
+  base_codigo: string;
+  base_nome: string;
+  nro_rota: string;
+  total: number;
+  recebido: number;
+  devolvido: number;
+  faltando: number;
+  pct: number;
+  status: "completa" | "parcial" | "vazia";
+};
+
+export type RotasPorBaseData = {
+  data: string;
+  bases: {
+    base_id: string;
+    codigo: string;
+    nome: string;
+    total_rotas: number;
+    rotas_completas: number;
+    rotas_parciais: number;
+    total_pacotes: number;
+    recebidos: number;
+    devolvidos: number;
+    faltando: number;
+    pct: number;
+  }[];
+  rotas: RotaBaseRow[];
+};
+
 function inicioPeriodo(p: "hoje" | "7d" | "30d") {
   const now = new Date();
   if (p === "hoje") {
@@ -158,4 +189,147 @@ export const gerencialData = createServerFn({ method: "POST" })
       porDia,
       comparativo,
     };
+  });
+
+const rotasInputSchema = z.object({
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  baseId: z.string().uuid().optional(),
+});
+
+function hojeYMD(): string {
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - off * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+export const rotasPorBase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => rotasInputSchema.parse(input))
+  .handler(async ({ data, context }): Promise<RotasPorBaseData> => {
+    const { supabase, userId } = context;
+    let dia = data.data ?? hojeYMD();
+
+    // Bases permitidas ao usuário (RLS já filtra, mas garantimos ordenação/uso)
+    const { data: bases, error: eb } = await supabase
+      .from("bases")
+      .select("id, codigo, nome")
+      .order("nome");
+    if (eb) throw new Error(eb.message);
+    const allowedBases = (bases ?? []).filter((b) => !data.baseId || b.id === data.baseId);
+    const baseMap = new Map(allowedBases.map((b) => [b.id, b] as const));
+
+    if (allowedBases.length === 0) {
+      return { data: dia, bases: [], rotas: [] };
+    }
+
+    // Importações ativas no dia para essas bases
+    let { data: imports, error: ei } = await supabase
+      .from("importacoes_escala")
+      .select("id, base_id")
+      .eq("data_operacional", dia)
+      .eq("ativa", true)
+      .in("base_id", allowedBases.map((b) => b.id));
+    if (ei) throw new Error(ei.message);
+
+    // Sem importação para o dia solicitado — usa o dia mais recente com dados.
+    if (!data.data && (imports ?? []).length === 0) {
+      const { data: recente } = await supabase
+        .from("importacoes_escala")
+        .select("data_operacional")
+        .eq("ativa", true)
+        .in("base_id", allowedBases.map((b) => b.id))
+        .order("data_operacional", { ascending: false })
+        .limit(1);
+      const nova = recente?.[0]?.data_operacional as string | undefined;
+      if (nova && nova !== dia) {
+        dia = nova;
+        const r2 = await supabase
+          .from("importacoes_escala")
+          .select("id, base_id")
+          .eq("data_operacional", dia)
+          .eq("ativa", true)
+          .in("base_id", allowedBases.map((b) => b.id));
+        imports = r2.data ?? [];
+      }
+    }
+
+    const importIds = (imports ?? []).map((i) => i.id);
+    const importBaseMap = new Map((imports ?? []).map((i) => [i.id, i.base_id] as const));
+
+    let escalas: { nro_rota: string | null; recebido: boolean | null; devolvido: boolean | null; importacao_id: string | null; base_operacional_id: string | null }[] = [];
+    if (importIds.length > 0) {
+      const { data: es, error: ee } = await supabase
+        .from("escalas")
+        .select("nro_rota, recebido, devolvido, importacao_id, base_operacional_id")
+        .in("importacao_id", importIds)
+        .limit(50000);
+      if (ee) throw new Error(ee.message);
+      escalas = es ?? [];
+    }
+
+    // Agrupamento por base+rota
+    const grupos = new Map<string, RotaBaseRow>();
+    for (const e of escalas) {
+      const baseId = importBaseMap.get(e.importacao_id ?? "") ?? e.base_operacional_id;
+      if (!baseId) continue;
+      const b = baseMap.get(baseId);
+      if (!b) continue;
+      const rota = (e.nro_rota ?? "").trim() || "—";
+      const key = `${baseId}::${rota}`;
+      const cur = grupos.get(key) ?? {
+        base_id: baseId,
+        base_codigo: b.codigo,
+        base_nome: b.nome,
+        nro_rota: rota,
+        total: 0,
+        recebido: 0,
+        devolvido: 0,
+        faltando: 0,
+        pct: 0,
+        status: "vazia" as const,
+      };
+      cur.total++;
+      if (e.recebido) cur.recebido++;
+      if (e.devolvido) cur.devolvido++;
+      grupos.set(key, cur);
+    }
+
+    const rotas: RotaBaseRow[] = Array.from(grupos.values()).map((r) => {
+      const processados = r.recebido + r.devolvido;
+      const faltando = Math.max(0, r.total - processados);
+      const pct = r.total ? (r.recebido / r.total) * 100 : 0;
+      const status: RotaBaseRow["status"] =
+        processados === 0 ? "vazia" : r.recebido >= r.total ? "completa" : "parcial";
+      return { ...r, faltando, pct, status };
+    });
+    rotas.sort((a, b) =>
+      a.base_nome.localeCompare(b.base_nome) || a.nro_rota.localeCompare(b.nro_rota, "pt-BR", { numeric: true }),
+    );
+
+    const resumoBases = allowedBases.map((b) => {
+      const rs = rotas.filter((r) => r.base_id === b.id);
+      const total_pacotes = rs.reduce((s, r) => s + r.total, 0);
+      const recebidos = rs.reduce((s, r) => s + r.recebido, 0);
+      const devolvidos = rs.reduce((s, r) => s + r.devolvido, 0);
+      const faltando = rs.reduce((s, r) => s + r.faltando, 0);
+      return {
+        base_id: b.id,
+        codigo: b.codigo,
+        nome: b.nome,
+        total_rotas: rs.length,
+        rotas_completas: rs.filter((r) => r.status === "completa").length,
+        rotas_parciais: rs.filter((r) => r.status === "parcial").length,
+        total_pacotes,
+        recebidos,
+        devolvidos,
+        faltando,
+        pct: total_pacotes ? (recebidos / total_pacotes) * 100 : 0,
+      };
+    });
+
+    // Silence unused var
+    void userId;
+
+    return { data: dia, bases: resumoBases, rotas };
   });

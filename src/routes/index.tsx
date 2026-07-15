@@ -1,8 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { redirect } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
-  beforeLoad: () => {
-    throw redirect({ to: "/recebimento" });
-  },
+  head: () => ({
+    meta: [
+      { title: "JM Transportes — Last Mile" },
+      { name: "description", content: "Plataforma operacional Last Mile da JM Transportes." },
+    ],
+  }),
+  component: () => <Navigate to="/auth" replace />,
 });

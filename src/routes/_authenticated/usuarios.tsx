@@ -10,6 +10,8 @@ import {
   resetSenhaUsuario,
   excluirUsuario,
   listarBasesUsuario,
+  listarUserBases,
+  setUserBases,
   type UsuarioRow,
 } from "@/lib/usuarios.functions";
 import { meuPerfil } from "@/lib/recebimento.functions";
@@ -36,6 +38,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Plus, Pencil, KeyRound, Power, Trash2, ShieldAlert } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/_authenticated/usuarios")({
   ssr: false,
@@ -201,23 +204,36 @@ function UsuarioForm({
   const [matricula, setMatricula] = useState("");
   const [baseId, setBaseId] = useState<string>("__none");
   const [role, setRole] = useState<Role>("operador");
+  const [supervisorBases, setSupervisorBases] = useState<string[]>([]);
 
   const fnCriar = useServerFn(criarUsuario);
   const fnAtualizar = useServerFn(atualizarUsuario);
+  const fnListarUserBases = useServerFn(listarUserBases);
+  const fnSetUserBases = useServerFn(setUserBases);
 
   const mut = useMutation({
     mutationFn: async () => {
       if (isEdit && editing) {
-        return fnAtualizar({ data: {
+        await fnAtualizar({ data: {
           user_id: editing.id, matricula: matricula || null,
           base_id: baseId === "__none" ? null : baseId, role,
         }});
+        if (role === "supervisor") {
+          await fnSetUserBases({ data: { user_id: editing.id, base_ids: supervisorBases } });
+        } else {
+          await fnSetUserBases({ data: { user_id: editing.id, base_ids: [] } });
+        }
+        return { ok: true };
       }
-      return fnCriar({ data: {
+      const created = await fnCriar({ data: {
         email, nome, senha, role,
         matricula: matricula || null,
         base_id: baseId === "__none" ? null : baseId,
       }});
+      if (role === "supervisor" && supervisorBases.length > 0 && created.id) {
+        await fnSetUserBases({ data: { user_id: created.id, base_ids: supervisorBases } });
+      }
+      return created;
     },
     onSuccess: () => {
       toast.success(isEdit ? "Usuário atualizado." : "Usuário criado.");
@@ -236,6 +252,12 @@ function UsuarioForm({
       setMatricula(editing?.matricula ?? "");
       setBaseId(editing?.base_id ?? "__none");
       setRole((editing?.roles[0] as Role) ?? "operador");
+      setSupervisorBases([]);
+      if (editing && (editing.roles[0] as Role) === "supervisor") {
+        fnListarUserBases({ data: { user_id: editing.id } })
+          .then((ids) => setSupervisorBases(ids))
+          .catch(() => setSupervisorBases([]));
+      }
     }
     onOpenChange(v);
   }
@@ -253,24 +275,28 @@ function UsuarioForm({
         </DialogHeader>
         <form
           className="space-y-3"
+          autoComplete="off"
           onSubmit={(e) => { e.preventDefault(); mut.mutate(); }}
         >
           {!isEdit && (
             <>
+              {/* Honeypots para evitar autofill do navegador com credenciais do admin logado */}
+              <input type="text" name="fake-user" autoComplete="username" className="hidden" tabIndex={-1} aria-hidden />
+              <input type="password" name="fake-pass" autoComplete="current-password" className="hidden" tabIndex={-1} aria-hidden />
               <div className="space-y-1">
                 <Label>Nome completo</Label>
-                <Input required value={nome} onChange={(e) => setNome(e.target.value)} />
+                <Input required autoComplete="off" value={nome} onChange={(e) => setNome(e.target.value)} />
               </div>
               <div className="space-y-1">
                 <Label>Email</Label>
-                <Input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@jmdistribuicao.com.br" />
+                <Input required type="email" autoComplete="off" name="new-user-email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@jmdistribuicao.com.br" />
               </div>
             </>
           )}
           {!isEdit && (
             <div className="space-y-1">
               <Label>Senha inicial</Label>
-              <Input required type="password" minLength={8} value={senha} onChange={(e) => setSenha(e.target.value)} />
+              <Input required type="password" autoComplete="new-password" name="new-user-password" minLength={8} value={senha} onChange={(e) => setSenha(e.target.value)} />
               <p className="text-[11px] text-muted-foreground">Mínimo 8 caracteres. O usuário poderá alterá-la depois.</p>
             </div>
           )}
@@ -313,10 +339,41 @@ function UsuarioForm({
               {role === "operador"
                 ? "Operadores devem estar vinculados a uma base."
                 : role === "supervisor"
-                ? "Supervisor pode ser vinculado a uma base específica."
+                ? "Base principal do supervisor. Adicione bases extras abaixo para acesso multi-base."
                 : "Administradores e gerentes têm acesso a todas as bases quando nenhuma é selecionada."}
             </p>
           </div>
+          {role === "supervisor" && (
+            <div className="space-y-2 border rounded-md p-3 bg-muted/20">
+              <Label>Bases adicionais que este supervisor pode acessar</Label>
+              <div className="grid grid-cols-2 gap-2 max-h-52 overflow-auto">
+                {bases.map((b) => {
+                  const isPrimary = baseId === b.id;
+                  const checked = supervisorBases.includes(b.id) || isPrimary;
+                  return (
+                    <label
+                      key={b.id}
+                      className={`flex items-center gap-2 text-sm border rounded p-2 ${isPrimary ? "opacity-60" : "cursor-pointer hover:bg-muted/40"}`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        disabled={isPrimary}
+                        onCheckedChange={(v) => {
+                          setSupervisorBases((prev) =>
+                            v ? Array.from(new Set([...prev, b.id])) : prev.filter((x) => x !== b.id),
+                          );
+                        }}
+                      />
+                      <span className="font-mono text-xs">{b.codigo}</span>
+                      <span className="truncate">{b.nome}</span>
+                      {isPrimary && <Badge variant="outline" className="ml-auto text-[10px]">principal</Badge>}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground">A base principal já dá acesso; marque aqui as demais.</p>
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button type="submit" disabled={mut.isPending}>
