@@ -458,23 +458,70 @@ function TriagemPage() {
     [mutation, paused, rotaSelecionada, rotaConcluidaRessalva],
   );
 
-  // Foco permanente
+  // Mantém o foco no scanner sem roubar o foco de campos, diálogos ou formulários.
   useEffect(() => {
-    const focus = () => inputRef.current?.focus();
-    focus();
-    const onClick = (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      if (t.closest("button, a, input, textarea, [role=button]")) return;
-      focus();
+    const elementoEditavelAtivo = () => {
+      const ativo = document.activeElement as HTMLElement | null;
+
+      return Boolean(
+        ativo?.closest(
+          "input, textarea, select, [contenteditable='true'], [role='textbox']",
+        ),
+      );
     };
-    const onKey = () => focus();
+
+    const focarScanner = () => {
+      if (
+        !modoRota ||
+        dialogRessalvaAberto ||
+        rotaConcluidaRessalva ||
+        elementoEditavelAtivo()
+      ) {
+        return;
+      }
+
+      inputRef.current?.focus();
+    };
+
+    focarScanner();
+
+    const onClick = (evento: MouseEvent) => {
+      const alvo = evento.target as HTMLElement | null;
+
+      if (
+        alvo?.closest(
+          "button, a, input, textarea, select, [contenteditable='true'], [role='button'], [role='textbox'], [role='dialog']",
+        )
+      ) {
+        return;
+      }
+
+      focarScanner();
+    };
+
+    const onKeyDown = (evento: KeyboardEvent) => {
+      const alvo = evento.target as HTMLElement | null;
+
+      if (
+        dialogRessalvaAberto ||
+        alvo?.closest(
+          "input, textarea, select, [contenteditable='true'], [role='textbox'], [role='dialog']",
+        )
+      ) {
+        return;
+      }
+
+      focarScanner();
+    };
+
     window.addEventListener("click", onClick);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKeyDown);
+
     return () => {
       window.removeEventListener("click", onClick);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [modoRota, dialogRessalvaAberto, rotaConcluidaRessalva]);
 
   const imprimirDetalheRota = useCallback(
     (
