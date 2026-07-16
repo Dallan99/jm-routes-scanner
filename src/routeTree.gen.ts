@@ -19,6 +19,7 @@ import { Route as TvGerencialRouteImport } from './routes/tv.gerencial'
 import { Route as TvDashboardRouteImport } from './routes/tv.dashboard'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 import { Route as AuthenticatedTriagemRouteImport } from './routes/_authenticated/triagem'
+import { Route as AuthenticatedTransferenciasLoteRouteImport } from './routes/_authenticated/transferencias-lote'
 import { Route as AuthenticatedTransferenciasRouteImport } from './routes/_authenticated/transferencias'
 import { Route as AuthenticatedRecebimentoRouteImport } from './routes/_authenticated/recebimento'
 import { Route as AuthenticatedInventarioRouteImport } from './routes/_authenticated/inventario'
@@ -81,6 +82,12 @@ const AuthenticatedTriagemRoute = AuthenticatedTriagemRouteImport.update({
   path: '/triagem',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTransferenciasLoteRoute =
+  AuthenticatedTransferenciasLoteRouteImport.update({
+    id: '/transferencias-lote',
+    path: '/transferencias-lote',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedTransferenciasRoute =
   AuthenticatedTransferenciasRouteImport.update({
     id: '/transferencias',
@@ -163,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
   '/transferencias': typeof AuthenticatedTransferenciasRoute
+  '/transferencias-lote': typeof AuthenticatedTransferenciasLoteRoute
   '/triagem': typeof AuthenticatedTriagemRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
@@ -186,6 +194,7 @@ export interface FileRoutesByTo {
   '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
   '/transferencias': typeof AuthenticatedTransferenciasRoute
+  '/transferencias-lote': typeof AuthenticatedTransferenciasLoteRoute
   '/triagem': typeof AuthenticatedTriagemRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
@@ -211,6 +220,7 @@ export interface FileRoutesById {
   '/_authenticated/inventario': typeof AuthenticatedInventarioRoute
   '/_authenticated/recebimento': typeof AuthenticatedRecebimentoRoute
   '/_authenticated/transferencias': typeof AuthenticatedTransferenciasRoute
+  '/_authenticated/transferencias-lote': typeof AuthenticatedTransferenciasLoteRoute
   '/_authenticated/triagem': typeof AuthenticatedTriagemRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/inventario'
     | '/recebimento'
     | '/transferencias'
+    | '/transferencias-lote'
     | '/triagem'
     | '/usuarios'
     | '/tv/dashboard'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/inventario'
     | '/recebimento'
     | '/transferencias'
+    | '/transferencias-lote'
     | '/triagem'
     | '/usuarios'
     | '/tv/dashboard'
@@ -283,6 +295,7 @@ export interface FileRouteTypes {
     | '/_authenticated/inventario'
     | '/_authenticated/recebimento'
     | '/_authenticated/transferencias'
+    | '/_authenticated/transferencias-lote'
     | '/_authenticated/triagem'
     | '/_authenticated/usuarios'
     | '/tv/dashboard'
@@ -368,6 +381,13 @@ declare module '@tanstack/react-router' {
       path: '/triagem'
       fullPath: '/triagem'
       preLoaderRoute: typeof AuthenticatedTriagemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/transferencias-lote': {
+      id: '/_authenticated/transferencias-lote'
+      path: '/transferencias-lote'
+      fullPath: '/transferencias-lote'
+      preLoaderRoute: typeof AuthenticatedTransferenciasLoteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/transferencias': {
@@ -470,6 +490,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedInventarioRoute: typeof AuthenticatedInventarioRoute
   AuthenticatedRecebimentoRoute: typeof AuthenticatedRecebimentoRoute
   AuthenticatedTransferenciasRoute: typeof AuthenticatedTransferenciasRoute
+  AuthenticatedTransferenciasLoteRoute: typeof AuthenticatedTransferenciasLoteRoute
   AuthenticatedTriagemRoute: typeof AuthenticatedTriagemRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
@@ -487,6 +508,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedInventarioRoute: AuthenticatedInventarioRoute,
   AuthenticatedRecebimentoRoute: AuthenticatedRecebimentoRoute,
   AuthenticatedTransferenciasRoute: AuthenticatedTransferenciasRoute,
+  AuthenticatedTransferenciasLoteRoute: AuthenticatedTransferenciasLoteRoute,
   AuthenticatedTriagemRoute: AuthenticatedTriagemRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }
