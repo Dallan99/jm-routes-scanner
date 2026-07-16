@@ -904,6 +904,270 @@ export type Database = {
           },
         ]
       }
+      transferencia_evidencias: {
+        Row: {
+          created_at: string
+          enviado_por: string
+          etapa: string
+          evento_id: string
+          horario_evidencia: string | null
+          id: string
+          localizacao_texto: string | null
+          rejeicao_motivo: string | null
+          status: string
+          storage_path: string | null
+          substituida_por: string | null
+          timemark_url: string | null
+          transferencia_id: string
+          validado_em: string | null
+          validado_por: string | null
+        }
+        Insert: {
+          created_at?: string
+          enviado_por: string
+          etapa: string
+          evento_id: string
+          horario_evidencia?: string | null
+          id?: string
+          localizacao_texto?: string | null
+          rejeicao_motivo?: string | null
+          status?: string
+          storage_path?: string | null
+          substituida_por?: string | null
+          timemark_url?: string | null
+          transferencia_id: string
+          validado_em?: string | null
+          validado_por?: string | null
+        }
+        Update: {
+          created_at?: string
+          enviado_por?: string
+          etapa?: string
+          evento_id?: string
+          horario_evidencia?: string | null
+          id?: string
+          localizacao_texto?: string | null
+          rejeicao_motivo?: string | null
+          status?: string
+          storage_path?: string | null
+          substituida_por?: string | null
+          timemark_url?: string | null
+          transferencia_id?: string
+          validado_em?: string | null
+          validado_por?: string | null
+        }
+        Relationships: []
+      }
+      transferencia_eventos: {
+        Row: {
+          created_at: string
+          etapa: string
+          id: string
+          latitude: number | null
+          localizacao_texto: string | null
+          longitude: number | null
+          minutos_atraso: number
+          ocorrido_em: string
+          registrado_por: string
+          transferencia_id: string
+        }
+        Insert: {
+          created_at?: string
+          etapa: string
+          id?: string
+          latitude?: number | null
+          localizacao_texto?: string | null
+          longitude?: number | null
+          minutos_atraso?: number
+          ocorrido_em: string
+          registrado_por: string
+          transferencia_id: string
+        }
+        Update: {
+          created_at?: string
+          etapa?: string
+          id?: string
+          latitude?: number | null
+          localizacao_texto?: string | null
+          longitude?: number | null
+          minutos_atraso?: number
+          ocorrido_em?: string
+          registrado_por?: string
+          transferencia_id?: string
+        }
+        Relationships: []
+      }
+      transferencia_motivos: {
+        Row: {
+          ativo: boolean
+          codigo: string
+          created_at: string
+          etapa: string | null
+          exige_descricao: boolean
+          id: string
+          nome: string
+          ordem: number
+          responsabilidade: string
+        }
+        Insert: {
+          ativo?: boolean
+          codigo: string
+          created_at?: string
+          etapa?: string | null
+          exige_descricao?: boolean
+          id?: string
+          nome: string
+          ordem?: number
+          responsabilidade: string
+        }
+        Update: {
+          ativo?: boolean
+          codigo?: string
+          created_at?: string
+          etapa?: string | null
+          exige_descricao?: boolean
+          id?: string
+          nome?: string
+          ordem?: number
+          responsabilidade?: string
+        }
+        Relationships: []
+      }
+      transferencia_ocorrencias: {
+        Row: {
+          created_at: string
+          etapa: string
+          evento_id: string
+          id: string
+          minutos_atraso: number
+          motivo_id: string | null
+          observacao: string | null
+          registrado_por: string
+          responsabilidade: string
+          transferencia_id: string
+        }
+        Insert: {
+          created_at?: string
+          etapa: string
+          evento_id: string
+          id?: string
+          minutos_atraso?: number
+          motivo_id?: string | null
+          observacao?: string | null
+          registrado_por: string
+          responsabilidade: string
+          transferencia_id: string
+        }
+        Update: {
+          created_at?: string
+          etapa?: string
+          evento_id?: string
+          id?: string
+          minutos_atraso?: number
+          motivo_id?: string | null
+          observacao?: string | null
+          registrado_por?: string
+          responsabilidade?: string
+          transferencia_id?: string
+        }
+        Relationships: []
+      }
+      transferencia_slas: {
+        Row: {
+          ativo: boolean
+          base_id: string
+          chegada_service_limite: string
+          created_at: string
+          id: string
+          saida_service_limite: string
+          service: string
+          transito_max_minutos: number
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          base_id: string
+          chegada_service_limite?: string
+          created_at?: string
+          id?: string
+          saida_service_limite?: string
+          service: string
+          transito_max_minutos?: number
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          base_id?: string
+          chegada_service_limite?: string
+          created_at?: string
+          id?: string
+          saida_service_limite?: string
+          service?: string
+          transito_max_minutos?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      transferencias: {
+        Row: {
+          base_id: string
+          cancelada_em: string | null
+          cancelada_por: string | null
+          cancelamento_motivo: string | null
+          codigo: string
+          created_at: string
+          criado_por: string
+          data_operacional: string
+          finalizada_em: string | null
+          id: string
+          motorista: string
+          observacao: string | null
+          placa: string
+          service: string
+          status: string
+          tipo_veiculo: string | null
+          updated_at: string
+        }
+        Insert: {
+          base_id: string
+          cancelada_em?: string | null
+          cancelada_por?: string | null
+          cancelamento_motivo?: string | null
+          codigo: string
+          created_at?: string
+          criado_por: string
+          data_operacional: string
+          finalizada_em?: string | null
+          id?: string
+          motorista: string
+          observacao?: string | null
+          placa: string
+          service: string
+          status?: string
+          tipo_veiculo?: string | null
+          updated_at?: string
+        }
+        Update: {
+          base_id?: string
+          cancelada_em?: string | null
+          cancelada_por?: string | null
+          cancelamento_motivo?: string | null
+          codigo?: string
+          created_at?: string
+          criado_por?: string
+          data_operacional?: string
+          finalizada_em?: string | null
+          id?: string
+          motorista?: string
+          observacao?: string | null
+          placa?: string
+          service?: string
+          status?: string
+          tipo_veiculo?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_bases: {
         Row: {
           base_id: string
@@ -1066,6 +1330,33 @@ export type Database = {
       }
     }
     Functions: {
+      anexar_evidencia_transferencia: {
+        Args: {
+          p_etapa: string
+          p_horario_evidencia?: string | null
+          p_localizacao_texto?: string | null
+          p_storage_path: string
+          p_timemark_url: string
+          p_transferencia_id: string
+        }
+        Returns: Json
+      }
+      cancelar_transferencia: {
+        Args: { p_justificativa: string; p_transferencia_id: string }
+        Returns: Json
+      }
+      criar_transferencia: {
+        Args: {
+          p_base_id: string
+          p_data_operacional: string
+          p_motorista: string
+          p_observacao?: string | null
+          p_placa: string
+          p_service: string
+          p_tipo_veiculo?: string | null
+        }
+        Returns: Json
+      }
       get_allowed_bases: { Args: { _user_id: string }; Returns: string[] }
       has_base_access: {
         Args: { _base_id: string; _user_id: string }
@@ -1076,6 +1367,39 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      registrar_evento_transferencia: {
+        Args: {
+          p_etapa: string
+          p_horario_evidencia?: string | null
+          p_localizacao_texto?: string | null
+          p_motivo_codigo?: string | null
+          p_observacao?: string | null
+          p_ocorrido_em: string
+          p_responsabilidade?: string | null
+          p_storage_path?: string | null
+          p_timemark_url?: string | null
+          p_transferencia_id: string
+        }
+        Returns: Json
+      }
+      salvar_sla_transferencia: {
+        Args: {
+          p_base_id: string
+          p_chegada_service_limite: string
+          p_saida_service_limite: string
+          p_service: string
+          p_transito_max_minutos: number
+        }
+        Returns: Json
+      }
+      transferencia_access: {
+        Args: { _transferencia_id: string; _user_id: string }
+        Returns: boolean
+      }
+      transferencia_base_access: {
+        Args: { _base_id: string; _user_id: string }
         Returns: boolean
       }
     }

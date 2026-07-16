@@ -28,6 +28,7 @@ import {
   LogOut,
   Boxes,
   RotateCcw,
+  Truck,
 } from "lucide-react";
 import { JmLogo, JmWordmark } from "@/components/jm-logo";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,7 @@ const NAV_OPERACIONAL: NavItem[] = [
   { title: "Triagem", to: "/triagem", icon: PackageSearch },
   { title: "Contagem", to: "/contagem", icon: ClipboardList },
   { title: "Devoluções", to: "/devolucoes", icon: RotateCcw },
+  { title: "Transferências", to: "/transferencias", icon: Truck },
   { title: "Inventário", to: "/inventario", icon: ClipboardList },
 ];
 const NAV_GESTAO: NavItem[] = [
