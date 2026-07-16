@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TvRouteImport } from './routes/tv'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as PreviewRelatoriosRouteImport } from './routes/preview-relatorios'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -39,6 +40,11 @@ const TvRoute = TvRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PreviewRelatoriosRoute = PreviewRelatoriosRouteImport.update({
+  id: '/preview-relatorios',
+  path: '/preview-relatorios',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -142,6 +148,7 @@ const AuthenticatedAuditoriaRoute = AuthenticatedAuditoriaRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/preview-relatorios': typeof PreviewRelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/tv': typeof TvRouteWithChildren
   '/auditoria': typeof AuthenticatedAuditoriaRoute
@@ -155,8 +162,8 @@ export interface FileRoutesByFullPath {
   '/inicio': typeof AuthenticatedInicioRoute
   '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
-  '/triagem': typeof AuthenticatedTriagemRoute
   '/transferencias': typeof AuthenticatedTransferenciasRoute
+  '/triagem': typeof AuthenticatedTriagemRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
   '/tv/gerencial': typeof TvGerencialRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/preview-relatorios': typeof PreviewRelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/tv': typeof TvRouteWithChildren
   '/auditoria': typeof AuthenticatedAuditoriaRoute
@@ -177,8 +185,8 @@ export interface FileRoutesByTo {
   '/inicio': typeof AuthenticatedInicioRoute
   '/inventario': typeof AuthenticatedInventarioRoute
   '/recebimento': typeof AuthenticatedRecebimentoRoute
-  '/triagem': typeof AuthenticatedTriagemRoute
   '/transferencias': typeof AuthenticatedTransferenciasRoute
+  '/triagem': typeof AuthenticatedTriagemRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
   '/tv/gerencial': typeof TvGerencialRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/preview-relatorios': typeof PreviewRelatoriosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/tv': typeof TvRouteWithChildren
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
@@ -201,8 +210,8 @@ export interface FileRoutesById {
   '/_authenticated/inicio': typeof AuthenticatedInicioRoute
   '/_authenticated/inventario': typeof AuthenticatedInventarioRoute
   '/_authenticated/recebimento': typeof AuthenticatedRecebimentoRoute
-  '/_authenticated/triagem': typeof AuthenticatedTriagemRoute
   '/_authenticated/transferencias': typeof AuthenticatedTransferenciasRoute
+  '/_authenticated/triagem': typeof AuthenticatedTriagemRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/tv/dashboard': typeof TvDashboardRoute
   '/tv/gerencial': typeof TvGerencialRoute
@@ -212,6 +221,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/preview-relatorios'
     | '/reset-password'
     | '/tv'
     | '/auditoria'
@@ -225,8 +235,8 @@ export interface FileRouteTypes {
     | '/inicio'
     | '/inventario'
     | '/recebimento'
-    | '/triagem'
     | '/transferencias'
+    | '/triagem'
     | '/usuarios'
     | '/tv/dashboard'
     | '/tv/gerencial'
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/preview-relatorios'
     | '/reset-password'
     | '/tv'
     | '/auditoria'
@@ -247,8 +258,8 @@ export interface FileRouteTypes {
     | '/inicio'
     | '/inventario'
     | '/recebimento'
-    | '/triagem'
     | '/transferencias'
+    | '/triagem'
     | '/usuarios'
     | '/tv/dashboard'
     | '/tv/gerencial'
@@ -257,6 +268,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/preview-relatorios'
     | '/reset-password'
     | '/tv'
     | '/_authenticated/auditoria'
@@ -270,8 +282,8 @@ export interface FileRouteTypes {
     | '/_authenticated/inicio'
     | '/_authenticated/inventario'
     | '/_authenticated/recebimento'
-    | '/_authenticated/triagem'
     | '/_authenticated/transferencias'
+    | '/_authenticated/triagem'
     | '/_authenticated/usuarios'
     | '/tv/dashboard'
     | '/tv/gerencial'
@@ -281,6 +293,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  PreviewRelatoriosRoute: typeof PreviewRelatoriosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   TvRoute: typeof TvRouteWithChildren
 }
@@ -299,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preview-relatorios': {
+      id: '/preview-relatorios'
+      path: '/preview-relatorios'
+      fullPath: '/preview-relatorios'
+      preLoaderRoute: typeof PreviewRelatoriosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -449,8 +469,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedInicioRoute: typeof AuthenticatedInicioRoute
   AuthenticatedInventarioRoute: typeof AuthenticatedInventarioRoute
   AuthenticatedRecebimentoRoute: typeof AuthenticatedRecebimentoRoute
-  AuthenticatedTriagemRoute: typeof AuthenticatedTriagemRoute
   AuthenticatedTransferenciasRoute: typeof AuthenticatedTransferenciasRoute
+  AuthenticatedTriagemRoute: typeof AuthenticatedTriagemRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
 
@@ -466,8 +486,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedInicioRoute: AuthenticatedInicioRoute,
   AuthenticatedInventarioRoute: AuthenticatedInventarioRoute,
   AuthenticatedRecebimentoRoute: AuthenticatedRecebimentoRoute,
-  AuthenticatedTriagemRoute: AuthenticatedTriagemRoute,
   AuthenticatedTransferenciasRoute: AuthenticatedTransferenciasRoute,
+  AuthenticatedTriagemRoute: AuthenticatedTriagemRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }
 
@@ -490,6 +510,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  PreviewRelatoriosRoute: PreviewRelatoriosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   TvRoute: TvRouteWithChildren,
 }
