@@ -12,7 +12,6 @@ import {
   Pencil,
   Plus,
   RefreshCcw,
-  Route as RouteIcon,
   Save,
   Trash2,
   Truck,
@@ -85,6 +84,19 @@ function duracao(minutos: number | null) {
   const h = Math.floor(minutos / 60);
   const m = minutos % 60;
   return `${h}h${String(m).padStart(2, "0")}`;
+}
+
+function minutosDoDiaEmSaoPaulo(iso?: string) {
+  if (!iso) return null;
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(iso));
+  const hora = Number(partes.find((parte) => parte.type === "hour")?.value);
+  const minuto = Number(partes.find((parte) => parte.type === "minute")?.value);
+  return Number.isFinite(hora) && Number.isFinite(minuto) ? hora * 60 + minuto : null;
 }
 
 function eventoDe(t: TransferenciaDetalhe, etapa: TransferenciaEtapa) {
@@ -224,29 +236,35 @@ function TransferenciasPage() {
   });
 
   const indicadores = useMemo(() => {
-    const concluidas = linhas.filter((t) => eventoDe(t, "chegada_xpt"));
-    const deslocamentos = concluidas
-      .map((t) => minutosEntre(eventoDe(t, "saida_service")?.ocorrido_em, eventoDe(t, "chegada_xpt")?.ocorrido_em))
-      .filter((v): v is number => v != null);
+    const agora = dataRota === hojeYmd() ? new Date().toISOString() : undefined;
     const permanencias = linhas
-      .map((t) => minutosEntre(eventoDe(t, "chegada_service")?.ocorrido_em, eventoDe(t, "saida_service")?.ocorrido_em))
+      .map((t) => minutosEntre(
+        eventoDe(t, "chegada_service")?.ocorrido_em,
+        eventoDe(t, "saida_service")?.ocorrido_em ?? agora,
+      ))
       .filter((v): v is number => v != null);
-    const noPrazo = deslocamentos.filter((m) => m <= 60).length;
-    const atencao = deslocamentos.filter((m) => m > 60 && m <= 80).length;
-    const atraso = deslocamentos.filter((m) => m > 80).length;
+    const disponibilizadosAte7 = linhas.filter((t) => {
+      const minutos = minutosDoDiaEmSaoPaulo(eventoDe(t, "chegada_service")?.ocorrido_em);
+      return minutos != null && minutos <= 7 * 60;
+    }).length;
+    const aguardandoCarga = linhas.filter(
+      (t) => eventoDe(t, "chegada_service") && !eventoDe(t, "saida_service"),
+    ).length;
+    const saidasApos9 = linhas.filter((t) => {
+      const minutos = minutosDoDiaEmSaoPaulo(eventoDe(t, "saida_service")?.ocorrido_em);
+      return minutos != null && minutos > 9 * 60;
+    }).length;
     return {
       total: linhas.length,
-      noPrazo,
-      atencao,
-      atraso,
+      disponibilizadosAte7,
+      aguardandoCarga,
+      saidasApos9,
       mediaService: permanencias.length
         ? Math.round(permanencias.reduce((a, b) => a + b, 0) / permanencias.length)
         : 0,
-      mediaDeslocamento: deslocamentos.length
-        ? Math.round(deslocamentos.reduce((a, b) => a + b, 0) / deslocamentos.length)
-        : 0,
+      maiorEspera: permanencias.length ? Math.max(...permanencias) : 0,
     };
-  }, [linhas]);
+  }, [linhas, dataRota]);
 
   function refresh() {
     void qc.invalidateQueries({ queryKey: ["transferencias-painel"] });
@@ -265,7 +283,7 @@ function TransferenciasPage() {
             <Truck className="w-8 h-8 text-primary" /> Transferências
           </h1>
           <p className="text-sm text-muted-foreground">
-            Acompanhe em tempo real as transferências do Service para o XPT.
+            Comprove quando o veículo foi disponibilizado e quanto tempo aguardou a carga no Service.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -327,11 +345,11 @@ function TransferenciasPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi titulo="Total de veículos" valor={indicadores.total} icone={Truck} />
-        <Kpi titulo="No prazo" valor={indicadores.noPrazo} subtitulo={percentual(indicadores.noPrazo, indicadores.total)} icone={CheckCircle2} tom="success" />
-        <Kpi titulo="Atenção (1h–1h20)" valor={indicadores.atencao} subtitulo={percentual(indicadores.atencao, indicadores.total)} icone={Clock3} tom="warning" />
-        <Kpi titulo="Atraso (>1h20)" valor={indicadores.atraso} subtitulo={percentual(indicadores.atraso, indicadores.total)} icone={AlertTriangle} tom="danger" />
-        <Kpi titulo="Média no Service" valor={`${indicadores.mediaService} min`} icone={Clock3} />
-        <Kpi titulo="Média deslocamento" valor={`${indicadores.mediaDeslocamento} min`} icone={RouteIcon} />
+        <Kpi titulo="Disponibilizados até 07h" valor={indicadores.disponibilizadosAte7} subtitulo={percentual(indicadores.disponibilizadosAte7, indicadores.total)} icone={CheckCircle2} tom="success" />
+        <Kpi titulo="Aguardando carga" valor={indicadores.aguardandoCarga} icone={Clock3} tom="warning" />
+        <Kpi titulo="Saídas após 09h (MELI)" valor={indicadores.saidasApos9} subtitulo={percentual(indicadores.saidasApos9, indicadores.total)} icone={AlertTriangle} tom="danger" />
+        <Kpi titulo="Média aguardando carga" valor={duracao(indicadores.mediaService)} icone={Clock3} />
+        <Kpi titulo="Maior espera por carga" valor={duracao(indicadores.maiorEspera)} icone={AlertTriangle} tom="danger" />
       </div>
 
       <Card className="overflow-hidden">
@@ -347,11 +365,11 @@ function TransferenciasPage() {
                 <th className="p-3 text-left">Service</th>
                 <th className="p-3 text-center" colSpan={2}>Chegada Service</th>
                 <th className="p-3 text-center" colSpan={2}>Saída Service</th>
+                <th className="p-3 text-center">Tempo aguardando carga</th>
+                <th className="p-3 text-center">Situação no Service</th>
                 <th className="p-3 text-center" colSpan={2}>Chegada XPT</th>
                 <th className="p-3 text-center" colSpan={2}>Saída XPT</th>
-                <th className="p-3 text-center">Tempo no Service</th>
                 <th className="p-3 text-center">Deslocamento</th>
-                <th className="p-3 text-center">Situação</th>
                 <th className="p-3 text-center">Ações</th>
               </tr>
               <tr className="text-xs text-muted-foreground border-t">
@@ -363,11 +381,13 @@ function TransferenciasPage() {
                 <th className="p-2">Evidência</th>
                 <th className="p-2">Horário</th>
                 <th className="p-2">TimeMark</th>
+                <th />
+                <th />
                 <th className="p-2">Horário</th>
                 <th className="p-2">Evidência</th>
                 <th className="p-2">Horário</th>
                 <th className="p-2">Evidência</th>
-                <th /><th /><th /><th />
+                <th /><th />
               </tr>
             </thead>
             <tbody>
@@ -388,9 +408,12 @@ function TransferenciasPage() {
                 const saidaService = eventoDe(t, "saida_service");
                 const chegadaXpt = eventoDe(t, "chegada_xpt");
                 const saidaXpt = eventoDe(t, "saida_xpt");
-                const permanencia = minutosEntre(chegadaService?.ocorrido_em, saidaService?.ocorrido_em);
+                const permanencia = minutosEntre(
+                  chegadaService?.ocorrido_em,
+                  saidaService?.ocorrido_em ?? (dataRota === hojeYmd() ? new Date().toISOString() : undefined),
+                );
                 const deslocamento = minutosEntre(saidaService?.ocorrido_em, chegadaXpt?.ocorrido_em);
-                const situacao = classificar(deslocamento);
+                const situacao = classificarService(chegadaService?.ocorrido_em, saidaService?.ocorrido_em);
                 const evidChegada = t.evidencias.find((e) => e.etapa === "chegada_service");
                 const evidSaida = t.evidencias.find((e) => e.etapa === "saida_service");
                 const evidXpt = t.evidencias.find((e) => e.etapa === "chegada_xpt");
@@ -411,11 +434,11 @@ function TransferenciasPage() {
                     <td className="p-3 font-semibold">{t.service}</td>
                     <EtapaFormCells transferencia={t} etapa="chegada_service" evento={chegadaService} evidencia={evidChegada} ativo={proxima === "chegada_service"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
                     <EtapaFormCells transferencia={t} etapa="saida_service" evento={saidaService} evidencia={evidSaida} ativo={proxima === "saida_service"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
+                    <td className={`p-3 text-center font-semibold ${situacao.cor}`}>{permanencia != null ? duracao(permanencia) : chegadaService ? "Em aberto" : "—"}</td>
+                    <td className="p-3 text-center"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${situacao.badge}`}>{situacao.label}</span></td>
                     <EtapaFormCells transferencia={t} etapa="chegada_xpt" evento={chegadaXpt} evidencia={evidXpt} ativo={proxima === "chegada_xpt"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
                     <EtapaFormCells transferencia={t} etapa="saida_xpt" evento={saidaXpt} evidencia={evidSaidaXpt} ativo={proxima === "saida_xpt"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
-                    <td className="p-3 text-center font-semibold">{duracao(permanencia)}</td>
-                    <td className={`p-3 text-center font-semibold ${situacao.cor}`}>{duracao(deslocamento)}</td>
-                    <td className="p-3 text-center"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${situacao.badge}`}>{situacao.label}</span></td>
+                    <td className="p-3 text-center font-semibold text-muted-foreground">{duracao(deslocamento)}</td>
                     <td className="p-3 text-center"><div className="flex justify-center gap-1">
                       <Button variant="ghost" size="icon" title="Editar rota" onClick={() => setEditando(t)}><Pencil className="w-4 h-4" /></Button>
                       <Button variant="ghost" size="icon" title="Excluir rota" className="text-destructive" disabled={excluirMutation.isPending} onClick={() => excluirMutation.mutate(t.id)}><Trash2 className="w-4 h-4" /></Button>
@@ -446,10 +469,10 @@ function TransferenciasPage() {
           </table>
         </div>
         <div className="p-4 border-t flex flex-wrap gap-6 text-xs text-muted-foreground">
-          <Legenda classe="bg-emerald-500" texto="No prazo: deslocamento até 1h" />
-          <Legenda classe="bg-amber-500" texto="Atenção: entre 1h e 1h20" />
-          <Legenda classe="bg-red-500" texto="Atraso: acima de 1h20" />
-          <Legenda classe="bg-slate-400" texto="Há chegadas ou saídas pendentes" />
+          <Legenda classe="bg-emerald-500" texto="Veículo liberado pelo Service até 09h" />
+          <Legenda classe="bg-amber-500" texto="Veículo no Service aguardando carga" />
+          <Legenda classe="bg-red-500" texto="Saída após 09h: atraso de carregamento/liberação MELI" />
+          <Legenda classe="bg-slate-400" texto="Chegada ao Service ainda não registrada" />
         </div>
       </Card>
 
@@ -464,7 +487,7 @@ function TransferenciasPage() {
         </Card>
         <Card className="p-4">
           <h2 className="font-semibold mb-3">Observações gerais</h2>
-          <p className="text-sm text-muted-foreground">Use “Nova rota” quantas vezes precisar. Os dados e marcos são preenchidos diretamente nas linhas da tabela.</p>
+          <p className="text-sm text-muted-foreground">O foco é documentar a disponibilização antecipada da frota JM e a espera pela carga. O deslocamento até o XPT continua registrado como dado complementar.</p>
         </Card>
       </div>
 
@@ -483,11 +506,12 @@ function percentual(valor: number, total: number) {
   return total ? `${Math.round((valor / total) * 100)}%` : "0%";
 }
 
-function classificar(minutos: number | null) {
-  if (minutos == null) return { label: "Pendente", cor: "text-muted-foreground", badge: "bg-muted text-muted-foreground" };
-  if (minutos <= 60) return { label: "No prazo", cor: "text-emerald-600", badge: "bg-emerald-100 text-emerald-700" };
-  if (minutos <= 80) return { label: "Atenção", cor: "text-amber-600", badge: "bg-amber-100 text-amber-700" };
-  return { label: "Atraso", cor: "text-red-600", badge: "bg-red-100 text-red-700" };
+function classificarService(chegadaIso?: string, saidaIso?: string) {
+  if (!chegadaIso) return { label: "Aguardando chegada", cor: "text-muted-foreground", badge: "bg-muted text-muted-foreground" };
+  if (!saidaIso) return { label: "Aguardando carga MELI", cor: "text-amber-600", badge: "bg-amber-100 text-amber-700" };
+  const saida = minutosDoDiaEmSaoPaulo(saidaIso);
+  if (saida != null && saida <= 9 * 60) return { label: "Liberado até 09h", cor: "text-emerald-600", badge: "bg-emerald-100 text-emerald-700" };
+  return { label: "Saída tardia · MELI", cor: "text-red-600", badge: "bg-red-100 text-red-700" };
 }
 
 function EvidenceLink({ evidencia }: { evidencia?: TransferenciaDetalhe["evidencias"][number] }) {
