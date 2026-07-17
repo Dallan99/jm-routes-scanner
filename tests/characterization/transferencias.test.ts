@@ -11,6 +11,14 @@ const migration = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20260714143500_transferencias_module.sql"),
   "utf8",
 );
+const loteSource = readFileSync(
+  resolve(process.cwd(), "src/lib/transferencias-lote.functions.ts"),
+  "utf8",
+);
+const gerencialSource = readFileSync(
+  resolve(process.cwd(), "src/lib/gerencial.functions.ts"),
+  "utf8",
+);
 
 function evento(etapa: TransferenciaEvento["etapa"]): TransferenciaEvento {
   return {
@@ -43,6 +51,16 @@ describe("Transferências — fluxo operacional", () => {
     expect(path).toMatch(
       /^11111111-1111-4111-8111-111111111111\/22222222-2222-4222-8222-222222222222\/chegada_service-[0-9a-f-]+\.jpg$/,
     );
+  });
+
+  it("permite registrar os três marcos também pela operação em lote", () => {
+    expect(loteSource).toContain('z.enum(["chegada_service", "saida_service", "chegada_xpt"])');
+  });
+
+  it("mantém os indicadores gerenciais separados nas faixas de 60 e 80 minutos", () => {
+    expect(gerencialSource).toContain("t.deslocamento <= 60");
+    expect(gerencialSource).toContain("t.deslocamento > 60 && t.deslocamento <= 80");
+    expect(gerencialSource).toContain("t.deslocamento > 80");
   });
 });
 

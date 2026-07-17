@@ -58,7 +58,6 @@ function hojeYmd() {
   const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 10);
 }
-
 function hora(iso?: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -105,7 +104,7 @@ function TransferenciasPage() {
   const [busca, setBusca] = useState("");
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [adicionarOpen, setAdicionarOpen] = useState(false);
-  const [marcoLote, setMarcoLote] = useState<"chegada_service" | "saida_service" | null>(null);
+  const [marcoLote, setMarcoLote] = useState<TransferenciaEtapa | null>(null);
 
   const contexto = useQuery({
     queryKey: ["contexto-base-operacional"],
@@ -199,6 +198,9 @@ function TransferenciasPage() {
               </Button>
               <Button variant="outline" onClick={() => setMarcoLote("saida_service")}>
                 Registrar saída ({selecionados.length})
+              </Button>
+              <Button variant="outline" onClick={() => setMarcoLote("chegada_xpt")}>
+                Registrar chegada XPT ({selecionados.length})
               </Button>
             </>
           )}
@@ -414,7 +416,7 @@ function AdicionarVeiculosDialog({ open, onOpenChange, baseId, dataRota, criarFn
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Adicionar veículos</DialogTitle><DialogDescription>Cole várias linhas do Excel. Formato simples: Motorista, Placa e Tipo. Também aceitamos Service, Motorista, Placa e Tipo.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Service padrão</Label><Input value={service} onChange={(e) => setService(e.target.value)} placeholder="Ex.: SP17 - Mercado Livre" /></div><div><Label>Veículos</Label><Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={"João Silva\tABC1D23\tTruck\nCarlos Santos\tDEF4G56\tVan"} /></div><p className="text-xs text-muted-foreground">{linhas.length} linha(s) identificada(s).</p></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!baseId || !service.trim() || !linhas.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Adicionando…" : `Adicionar ${linhas.length} veículo(s)`}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: { etapa: "chegada_service" | "saida_service" | null; onOpenChange: (open: boolean) => void; ids: string[]; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcosTransferenciaLote>>; onSuccess: () => void }) {
+function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: { etapa: TransferenciaEtapa | null; onOpenChange: (open: boolean) => void; ids: string[]; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcosTransferenciaLote>>; onSuccess: () => void }) {
   const [horario, setHorario] = useState(() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); });
   const [localizacao, setLocalizacao] = useState("");
   const mutation = useMutation({
@@ -422,6 +424,10 @@ function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: {
     onSuccess: (resultado) => { toast.success(`${resultado.sucessos} marco(s) registrado(s).`); if (resultado.falhas) toast.warning(`${resultado.falhas} registro(s) falharam.`); onOpenChange(false); onSuccess(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar marcos."),
   });
-  const titulo = etapa === "chegada_service" ? "Chegada no Service em lote" : "Saída do Service em lote";
+  const titulo = etapa === "chegada_service"
+    ? "Chegada no Service em lote"
+    : etapa === "saida_service"
+      ? "Saída do Service em lote"
+      : "Chegada no XPT em lote";
   return <Dialog open={!!etapa} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{titulo}</DialogTitle><DialogDescription>O mesmo horário será aplicado aos {ids.length} veículos selecionados. As evidências poderão ser anexadas depois.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Ex.: SP17" /></div>{etapa === "saida_service" && new Date(horario).getHours() >= 9 && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">Saída após 09:00: responsabilidade atribuída automaticamente ao Mercado Livre por atraso no carregamento/liberação.</div>}</div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!localizacao.trim() || !ids.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Registrando…" : "Registrar em lote"}</Button></DialogFooter></DialogContent></Dialog>;
 }

@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 const dataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const etapaSchema = z.enum(["chegada_service", "saida_service"]);
+const etapaSchema = z.enum(["chegada_service", "saida_service", "chegada_xpt"]);
 
 const linhaCadastroSchema = z.object({
   service: z.string().trim().min(2).max(120),
@@ -61,7 +61,6 @@ export const criarTransferenciasLote = createServerFn({ method: "POST" })
     const sucessos = detalhes.filter((d) => d.ok).length;
     return { total: detalhes.length, sucessos, falhas: detalhes.length - sucessos, detalhes };
   });
-
 export const registrarMarcosTransferenciaLote = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
