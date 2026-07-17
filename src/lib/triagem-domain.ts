@@ -14,6 +14,11 @@ export type RotaResumoTriagem = {
   status: "aberta" | "fechada";
 };
 
+/** Normaliza a leitura sem impor atraso artificial entre dois códigos distintos. */
+export function normalizarCodigoTriagem(codigo: string): string {
+  return codigo.trim().replace(/[^0-9A-Za-z]/g, "");
+}
+
 /** Regra canônica usada em toda a Triagem para determinar a rota operacional. */
 export function rotaEfetivaTriagem(
   linha: Pick<LinhaResumoTriagem, "otimizada" | "planejada">,
