@@ -12,7 +12,7 @@ import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
   Line, LineChart, Legend,
 } from "recharts";
-import { Activity, AlertTriangle, Award, CheckCircle2, Clock, MapPin, PackageCheck, Route as RouteIcon, TrendingDown, TrendingUp, Truck, Tv, Users, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, Award, CheckCircle2, Clock, MapPin, PackageCheck, TrendingDown, TrendingUp, Truck, Tv, Users, XCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/gerencial")({
   head: () => ({ meta: [{ title: "Dashboard Gerencial — JM Transportes" }] }),
@@ -398,39 +398,39 @@ function TransferenciasSection({
           <Truck className="w-5 h-5 text-primary" /> Transferências Service → XPT
         </h2>
         <p className="text-sm text-muted-foreground">
-          Cumprimento dos marcos, tempo de deslocamento e causas dos atrasos no período selecionado.
+          Evidências de disponibilização da frota JM e do tempo aguardando carregamento/liberação no Service.
         </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi label="Veículos" value={data?.totais.total ?? "—"} icon={Truck} />
         <Kpi
-          label="Concluídas"
-          value={data?.totais.concluidas ?? "—"}
+          label="Disponíveis até 07h"
+          value={data?.totais.disponibilizados_ate_7 ?? "—"}
           icon={CheckCircle2}
           accent="success"
         />
         <Kpi
-          label="Pendentes"
-          value={data?.totais.pendentes ?? "—"}
+          label="Aguardando carga"
+          value={data?.totais.aguardando_carga ?? "—"}
           icon={Clock}
           accent="warning"
         />
         <Kpi
-          label="No prazo ≤ 1h"
-          value={data?.totais.no_prazo ?? "—"}
-          icon={RouteIcon}
-          accent="success"
+          label="Saídas após 09h (MELI)"
+          value={data?.totais.saidas_apos_9 ?? "—"}
+          icon={AlertTriangle}
+          accent="destructive"
         />
         <Kpi
-          label="Atenção 1h–1h20"
-          value={data?.totais.atencao ?? "—"}
+          label="Média aguardando carga"
+          value={minutos(data?.totais.media_service_min ?? null)}
           icon={Clock}
           accent="warning"
         />
         <Kpi
-          label="Atrasadas > 1h20"
-          value={data?.totais.atrasadas ?? "—"}
+          label="Maior espera por carga"
+          value={minutos(data?.totais.maior_service_min ?? null)}
           icon={AlertTriangle}
           accent="destructive"
         />
@@ -441,8 +441,7 @@ function TransferenciasSection({
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="text-sm font-semibold">Desempenho por base</h3>
             <div className="text-xs text-muted-foreground">
-              Média Service: <b>{minutos(data?.totais.media_service_min ?? null)}</b> · Média
-              deslocamento: <b>{minutos(data?.totais.media_deslocamento_min ?? null)}</b>
+              Deslocamento (complementar): <b>{minutos(data?.totais.media_deslocamento_min ?? null)}</b>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -451,11 +450,10 @@ function TransferenciasSection({
                 <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
                   <th className="py-2 pr-3">Base</th>
                   <th className="py-2 pr-3 text-right">Veículos</th>
-                  <th className="py-2 pr-3 text-right">Concluídas</th>
-                  <th className="py-2 pr-3 text-right">Pendentes</th>
-                  <th className="py-2 pr-3 text-right">No prazo</th>
-                  <th className="py-2 pr-3 text-right">Atenção</th>
-                  <th className="py-2 pr-3 text-right">Atrasos</th>
+                  <th className="py-2 pr-3 text-right">Até 07h</th>
+                  <th className="py-2 pr-3 text-right">Aguardando carga</th>
+                  <th className="py-2 pr-3 text-right">Saídas após 09h</th>
+                  <th className="py-2 pr-3 text-right">Média espera</th>
                   <th className="py-2 text-right">Média trajeto</th>
                 </tr>
               </thead>
@@ -469,17 +467,12 @@ function TransferenciasSection({
                       </div>
                     </td>
                     <td className="py-2 pr-3 text-right font-mono">{base.total}</td>
-                    <td className="py-2 pr-3 text-right font-mono text-success">
-                      {base.concluidas}
-                    </td>
-                    <td className="py-2 pr-3 text-right font-mono text-warning">
-                      {base.pendentes}
-                    </td>
-                    <td className="py-2 pr-3 text-right font-mono text-success">{base.no_prazo}</td>
-                    <td className="py-2 pr-3 text-right font-mono text-warning">{base.atencao}</td>
+                    <td className="py-2 pr-3 text-right font-mono text-success">{base.disponibilizados_ate_7}</td>
+                    <td className="py-2 pr-3 text-right font-mono text-warning">{base.aguardando_carga}</td>
                     <td className="py-2 pr-3 text-right font-mono text-destructive">
-                      {base.atrasadas}
+                      {base.saidas_apos_9}
                     </td>
+                    <td className="py-2 pr-3 text-right font-mono">{minutos(base.media_service_min)}</td>
                     <td className="py-2 text-right font-mono">
                       {minutos(base.media_deslocamento_min)}
                     </td>
@@ -498,7 +491,7 @@ function TransferenciasSection({
         </Card>
 
         <Card className="p-4">
-          <h3 className="text-sm font-semibold mb-3">Motoristas com maior atraso</h3>
+          <h3 className="text-sm font-semibold mb-3">Maiores esperas por carregamento</h3>
           <ol className="space-y-2">
             {(data?.rankingMotoristas ?? []).slice(0, 5).map((item, index) => (
               <li
@@ -510,16 +503,16 @@ function TransferenciasSection({
                     {index + 1}. {item.motorista}
                   </b>
                   <span className="text-xs text-muted-foreground">
-                    {item.viagens_atrasadas} viagem(ns)
+                    {item.viagens_atrasadas} espera(s) registrada(s)
                   </span>
                 </div>
                 <span className="font-mono text-sm text-destructive">
-                  +{item.minutos_atraso} min
+                  {item.minutos_atraso} min
                 </span>
               </li>
             ))}
             {!loading && (data?.rankingMotoristas.length ?? 0) === 0 && (
-              <li className="text-sm text-muted-foreground">Nenhum atraso acima de 1h20.</li>
+              <li className="text-sm text-muted-foreground">Nenhum tempo de espera completo registrado.</li>
             )}
           </ol>
         </Card>
