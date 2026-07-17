@@ -64,6 +64,12 @@ describe("Transferências — fluxo operacional", () => {
     expect(loteSource).toContain('z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"])');
   });
 
+  it("mantém as três primeiras etapas funcionando enquanto a função v2 não está no banco", () => {
+    expect(loteSource).toContain('rpc("registrar_evento_transferencia"');
+    expect(loteSource).toContain('data.etapa !== "saida_xpt"');
+    expect(readFileSync(resolve(process.cwd(), "src/lib/transferencias.functions.ts"), "utf8")).toContain("As três etapas anteriores continuam disponíveis");
+  });
+
   it("mantém os indicadores gerenciais separados nas faixas de 60 e 80 minutos", () => {
     expect(gerencialSource).toContain("t.deslocamento <= 60");
     expect(gerencialSource).toContain("t.deslocamento > 60 && t.deslocamento <= 80");
