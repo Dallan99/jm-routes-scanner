@@ -356,6 +356,9 @@ const corrigirMarcoSchema = z.object({
   etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"]),
   ocorridoEm: z.string().datetime({ offset: true }),
   localizacaoTexto: z.string().trim().max(300).optional(),
+  storagePath: z.string().trim().max(500).optional(),
+  timemarkUrl: z.union([z.string().url().max(1000), z.literal("")]).optional(),
+  horarioEvidencia: z.string().datetime({ offset: true }).optional(),
 });
 
 export const corrigirMarcoTransferencia = createServerFn({ method: "POST" })
@@ -422,17 +425,67 @@ export const corrigirMarcoTransferencia = createServerFn({ method: "POST" })
         await supabaseAdmin.from("transferencias").update({ finalizada_em: data.ocorridoEm }).eq("id", transferencia.id);
       }
 
+      const { data: evidenciaAtual } = await supabaseAdmin
+        .from("transferencia_evidencias")
+        .select("id, storage_path, timemark_url")
+        .eq("transferencia_id", transferencia.id)
+        .eq("etapa", data.etapa)
+        .is("substituida_por", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const storagePath = data.storagePath ?? evidenciaAtual?.storage_path ?? null;
+      const timemarkUrl = data.timemarkUrl === undefined
+        ? evidenciaAtual?.timemark_url ?? null
+        : data.timemarkUrl || null;
+      if ((data.storagePath !== undefined || data.timemarkUrl !== undefined) && (storagePath || timemarkUrl)) {
+        const { data: novaEvidencia, error: evidenciaError } = await supabaseAdmin
+          .from("transferencia_evidencias")
+          .insert({
+            transferencia_id: transferencia.id,
+            evento_id: evento.id,
+            etapa: data.etapa,
+            storage_path: storagePath,
+            timemark_url: timemarkUrl,
+            horario_evidencia: data.horarioEvidencia ?? data.ocorridoEm,
+            localizacao_texto: data.localizacaoTexto || null,
+            status: "enviada",
+            enviado_por: context.userId,
+          })
+          .select("id")
+          .single();
+        if (evidenciaError) throw new Error(evidenciaError.message);
+        if (evidenciaAtual) {
+          await supabaseAdmin
+            .from("transferencia_evidencias")
+            .update({ substituida_por: novaEvidencia.id })
+            .eq("id", evidenciaAtual.id);
+        }
+      }
+
       await supabaseAdmin.from("audit_logs").insert({
         user_id: context.userId,
         acao: "transferencia.evento.corrigir",
         entidade: "transferencia_evento",
         entidade_id: evento.id,
-        detalhes: { etapa: data.etapa, horario_anterior: evento.ocorrido_em, horario_novo: data.ocorridoEm, minutos_atraso: minutosAtraso },
+        detalhes: {
+          etapa: data.etapa,
+          horario_anterior: evento.ocorrido_em,
+          horario_novo: data.ocorridoEm,
+          localizacao_anterior: evento.localizacao_texto,
+          localizacao_nova: data.localizacaoTexto || null,
+          link_corrigido: data.timemarkUrl !== undefined,
+          foto_substituida: !!data.storagePath,
+          minutos_atraso: minutosAtraso,
+        },
       });
       return { id: evento.id, ocorrido_em: data.ocorridoEm, minutos_atraso: minutosAtraso };
     } catch (error) {
-      const mensagem = error instanceof Error ? error.message : "Erro ao corrigir horário.";
-      if (mensagem.includes("SUPABASE_SERVICE_ROLE_KEY")) throw new Error("A edição de horário precisa ser habilitada no ambiente da Vercel.");
+      const mensagem = error instanceof Error ? error.message : "Erro ao corrigir a etapa.";
+      if (mensagem.includes("SUPABASE_SERVICE_ROLE_KEY") || mensagem.includes("SUPABASE_SECRET_KEY")) {
+        throw new Error("A edição da etapa precisa da chave secreta da Supabase configurada no ambiente da Vercel.");
+      }
       throw error;
     }
   });
