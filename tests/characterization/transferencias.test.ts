@@ -70,10 +70,11 @@ describe("Transferências — fluxo operacional", () => {
     expect(readFileSync(resolve(process.cwd(), "src/lib/transferencias.functions.ts"), "utf8")).toContain("As três etapas anteriores continuam disponíveis");
   });
 
-  it("mantém os indicadores gerenciais separados nas faixas de 60 e 80 minutos", () => {
-    expect(gerencialSource).toContain("t.deslocamento <= 60");
-    expect(gerencialSource).toContain("t.deslocamento > 60 && t.deslocamento <= 80");
-    expect(gerencialSource).toContain("t.deslocamento > 80");
+  it("prioriza no gerencial a disponibilidade da JM e a espera por carga no Service", () => {
+    expect(gerencialSource).toContain("disponibilizados_ate_7");
+    expect(gerencialSource).toContain("aguardando_carga");
+    expect(gerencialSource).toContain("saidas_apos_9");
+    expect(gerencialSource).toContain("t.permanencia");
   });
 });
 
@@ -119,6 +120,13 @@ describe("Transferências — operação inline", () => {
     expect(pageSource).toContain("Salvar correção");
     expect(pageSource).toContain('title="Excluir rota"');
     expect(pageSource).toContain('title={proxima === "saida_xpt" ? "Concluir transferência"');
+  });
+
+  it("destaca a prova de espera por carga e mantém o deslocamento como complementar", () => {
+    expect(pageSource).toContain("Disponibilizados até 07h");
+    expect(pageSource).toContain("Tempo aguardando carga");
+    expect(pageSource).toContain("Saídas após 09h (MELI)");
+    expect(pageSource).toContain("deslocamento até o XPT continua registrado como dado complementar");
   });
 
   it("audita a correção do horário e impede quebra da ordem cronológica", () => {
