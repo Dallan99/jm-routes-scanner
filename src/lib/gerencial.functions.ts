@@ -37,13 +37,12 @@ export type TransferenciasGerencialData = {
   periodo: "hoje" | "7d" | "30d";
   totais: {
     total: number;
-    concluidas: number;
-    pendentes: number;
-    no_prazo: number;
-    atencao: number;
-    atrasadas: number;
-    taxa_conclusao: number;
+    disponibilizados_ate_7: number;
+    aguardando_carga: number;
+    saidas_apos_9: number;
+    taxa_disponibilizacao: number;
     media_service_min: number | null;
+    maior_service_min: number | null;
     media_deslocamento_min: number | null;
   };
   porBase: {
@@ -51,11 +50,10 @@ export type TransferenciasGerencialData = {
     base_codigo: string;
     base_nome: string;
     total: number;
-    concluidas: number;
-    pendentes: number;
-    no_prazo: number;
-    atencao: number;
-    atrasadas: number;
+    disponibilizados_ate_7: number;
+    aguardando_carga: number;
+    saidas_apos_9: number;
+    media_service_min: number | null;
     media_deslocamento_min: number | null;
   }[];
   rankingMotoristas: {
@@ -269,13 +267,12 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
         periodo: data.periodo,
         totais: {
           total: 0,
-          concluidas: 0,
-          pendentes: 0,
-          no_prazo: 0,
-          atencao: 0,
-          atrasadas: 0,
-          taxa_conclusao: 0,
+          disponibilizados_ate_7: 0,
+          aguardando_carga: 0,
+          saidas_apos_9: 0,
+          taxa_disponibilizacao: 0,
           media_service_min: null,
+          maior_service_min: null,
           media_deslocamento_min: null,
         },
         porBase: [],
@@ -332,6 +329,18 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
       inicio && fim
         ? Math.max(0, Math.round((Date.parse(fim) - Date.parse(inicio)) / 60000))
         : null;
+    const minutosDoDiaEmSaoPaulo = (iso?: string) => {
+      if (!iso) return null;
+      const partes = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(new Date(iso));
+      const hora = Number(partes.find((parte) => parte.type === "hour")?.value);
+      const minuto = Number(partes.find((parte) => parte.type === "minute")?.value);
+      return Number.isFinite(hora) && Number.isFinite(minuto) ? hora * 60 + minuto : null;
+    };
     const metricas = rows.map((t) => {
       const lista = eventosMap.get(t.id) ?? [];
       const chegadaService = lista.find((e) => e.etapa === "chegada_service")?.ocorrido_em;
@@ -340,9 +349,14 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
       const saidaXpt = lista.find((e) => e.etapa === "saida_xpt")?.ocorrido_em;
       return {
         ...t,
-        concluida: !!saidaXpt,
+        chegadaService,
+        saidaService,
+        disponibilizadaAte7: (minutosDoDiaEmSaoPaulo(chegadaService) ?? Infinity) <= 7 * 60,
+        aguardandoCarga: !!chegadaService && !saidaService,
+        saidaApos9: (minutosDoDiaEmSaoPaulo(saidaService) ?? -Infinity) > 9 * 60,
         permanencia: minutosEntre(chegadaService, saidaService),
         deslocamento: minutosEntre(saidaService, chegadaXpt),
+        concluida: !!saidaXpt,
       };
     });
 
@@ -352,23 +366,20 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
         ? Math.round(validos.reduce((total, valor) => total + valor, 0) / validos.length)
         : null;
     };
-    const contarFaixas = (lista: typeof metricas) => ({
-      no_prazo: lista.filter((t) => t.deslocamento !== null && t.deslocamento <= 60).length,
-      atencao: lista.filter(
-        (t) => t.deslocamento !== null && t.deslocamento > 60 && t.deslocamento <= 80,
-      ).length,
-      atrasadas: lista.filter((t) => t.deslocamento !== null && t.deslocamento > 80).length,
+    const contarService = (lista: typeof metricas) => ({
+      disponibilizados_ate_7: lista.filter((t) => t.disponibilizadaAte7).length,
+      aguardando_carga: lista.filter((t) => t.aguardandoCarga).length,
+      saidas_apos_9: lista.filter((t) => t.saidaApos9).length,
     });
 
-    const concluidas = metricas.filter((t) => t.concluida).length;
-    const faixas = contarFaixas(metricas);
+    const service = contarService(metricas);
+    const permanencias = metricas.map((t) => t.permanencia).filter((valor): valor is number => valor !== null);
     const totais: TransferenciasGerencialData["totais"] = {
       total: metricas.length,
-      concluidas,
-      pendentes: metricas.length - concluidas,
-      ...faixas,
-      taxa_conclusao: metricas.length ? (concluidas / metricas.length) * 100 : 0,
-      media_service_min: media(metricas.map((t) => t.permanencia)),
+      ...service,
+      taxa_disponibilizacao: metricas.length ? (service.disponibilizados_ate_7 / metricas.length) * 100 : 0,
+      media_service_min: media(permanencias),
+      maior_service_min: permanencias.length ? Math.max(...permanencias) : null,
       media_deslocamento_min: media(metricas.map((t) => t.deslocamento)),
     };
 
@@ -376,26 +387,24 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
       .map((baseId) => {
         const lista = metricas.filter((t) => t.base_id === baseId);
         const base = baseMap.get(baseId);
-        const concluidasBase = lista.filter((t) => t.concluida).length;
         return {
           base_id: baseId,
           base_codigo: base?.codigo ?? "—",
           base_nome: base?.nome ?? "Base não encontrada",
           total: lista.length,
-          concluidas: concluidasBase,
-          pendentes: lista.length - concluidasBase,
-          ...contarFaixas(lista),
+          ...contarService(lista),
+          media_service_min: media(lista.map((t) => t.permanencia)),
           media_deslocamento_min: media(lista.map((t) => t.deslocamento)),
         };
       })
-      .sort((a, b) => b.atrasadas - a.atrasadas || b.total - a.total);
+      .sort((a, b) => b.saidas_apos_9 - a.saidas_apos_9 || b.total - a.total);
 
     const motoristasMap = new Map<string, { viagens_atrasadas: number; minutos_atraso: number }>();
     for (const t of metricas) {
-      if (t.deslocamento === null || t.deslocamento <= 80) continue;
+      if (t.permanencia === null) continue;
       const atual = motoristasMap.get(t.motorista) ?? { viagens_atrasadas: 0, minutos_atraso: 0 };
       atual.viagens_atrasadas++;
-      atual.minutos_atraso += t.deslocamento - 80;
+      atual.minutos_atraso += t.permanencia;
       motoristasMap.set(t.motorista, atual);
     }
     const rankingMotoristas = Array.from(motoristasMap.entries())
