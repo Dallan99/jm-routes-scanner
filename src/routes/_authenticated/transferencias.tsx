@@ -570,9 +570,9 @@ function EtapaFormCells({ transferencia, etapa, evento, evidencia, ativo, regist
   const [horario, setHorario] = useState(() => dataHoraLocal(evento?.ocorrido_em));
   const [localizacao, setLocalizacao] = useState(evento?.localizacao_texto ?? "");
   const [foto, setFoto] = useState<File | null>(null);
-  const [timemark, setTimemark] = useState("");
+  const [timemark, setTimemark] = useState(evidencia?.timemark_url ?? "");
   const [fotoKey, setFotoKey] = useState(0);
-  const [editandoHorario, setEditandoHorario] = useState(false);
+  const [editandoEtapa, setEditandoEtapa] = useState(false);
   const mutation = useMutation({
     mutationFn: async () => {
       if (!ativo || evento) throw new Error("Esta etapa ainda não está disponível.");
@@ -594,11 +594,51 @@ function EtapaFormCells({ transferencia, etapa, evento, evidencia, ativo, regist
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar etapa."),
   });
   const corrigirMutation = useMutation({
-    mutationFn: () => corrigirFn({ data: { transferenciaId: transferencia.id, etapa, ocorridoEm: new Date(horario).toISOString(), localizacaoTexto: localizacao || undefined } }),
-    onSuccess: () => { toast.success("Horário corrigido."); setEditandoHorario(false); onSuccess(); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao corrigir horário."),
+    mutationFn: async () => {
+      let storagePath: string | undefined;
+      if (foto) {
+        if (foto.size > 10 * 1024 * 1024) throw new Error("A foto deve ter no máximo 10 MB.");
+        storagePath = caminhoEvidenciaTransferencia(transferencia.base_id, transferencia.id, etapa, foto.name);
+        const { error } = await supabase.storage
+          .from("transferencias-evidencias")
+          .upload(storagePath, foto, { upsert: false, contentType: foto.type });
+        if (error) throw new Error(error.message);
+      }
+      try {
+        return await corrigirFn({
+          data: {
+            transferenciaId: transferencia.id,
+            etapa,
+            ocorridoEm: new Date(horario).toISOString(),
+            localizacaoTexto: localizacao || undefined,
+            storagePath,
+            timemarkUrl: timemark,
+            horarioEvidencia: foto || timemark ? new Date(horario).toISOString() : undefined,
+          },
+        });
+      } catch (error) {
+        if (storagePath) await supabase.storage.from("transferencias-evidencias").remove([storagePath]);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Etapa corrigida.");
+      setEditandoEtapa(false);
+      setFoto(null);
+      setFotoKey((key) => key + 1);
+      onSuccess();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao corrigir a etapa."),
   });
-  const bloqueado = evento ? !editandoHorario : !ativo;
-  const mensagem = evento ? editandoHorario ? "Corrija e salve" : "Etapa registrada" : ativo ? "Preencha e salve" : "Aguardando etapa anterior";
-  return <Fragment><td className={`p-2 align-top min-w-[190px] ${ativo || editandoHorario ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Horário ${etapa}`} type="datetime-local" value={horario} disabled={bloqueado} onChange={(e) => setHorario(e.target.value)} className="h-8 text-xs" /><Input aria-label={`Localização ${etapa}`} value={localizacao} disabled={bloqueado} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Localização" className="h-8 text-xs" />{evento && !editandoHorario && <Button variant="outline" size="sm" className="w-full h-8" onClick={() => { setHorario(dataHoraLocal(evento.ocorrido_em)); setLocalizacao(evento.localizacao_texto ?? ""); setEditandoHorario(true); }}><Pencil className="w-3 h-3 mr-1" />Editar horário</Button>}{evento && editandoHorario && <div className="flex gap-1"><Button size="sm" className="flex-1 h-8" disabled={corrigirMutation.isPending} onClick={() => corrigirMutation.mutate()}><Save className="w-3 h-3 mr-1" />{corrigirMutation.isPending ? "Salvando…" : "Salvar correção"}</Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Cancelar correção" onClick={() => { setHorario(dataHoraLocal(evento.ocorrido_em)); setLocalizacao(evento.localizacao_texto ?? ""); setEditandoHorario(false); }}><X className="w-3 h-3" /></Button></div>}<div className="text-[11px] text-muted-foreground">{mensagem}</div></div></td><td className={`p-2 align-top min-w-[230px] ${ativo ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Link ${etapa}`} type="url" value={evento ? evidencia?.timemark_url ?? "" : timemark} disabled={!!evento || !ativo} onChange={(e) => setTimemark(e.target.value)} placeholder="Link TimeMark ou evidência" className="h-8 text-xs" /><Input key={fotoKey} aria-label={`Foto ${etapa}`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!!evento || !ativo} onChange={(e) => setFoto(e.target.files?.[0] ?? null)} className="h-8 text-xs file:text-xs" />{evento ? <EvidenceLink evidencia={evidencia} /> : <Button size="sm" className="w-full h-8" disabled={!ativo || mutation.isPending} onClick={() => mutation.mutate()}><Save className="w-3 h-3 mr-1" />{mutation.isPending ? "Salvando…" : "Salvar etapa"}</Button>}</div></td></Fragment>;
+  const bloqueado = evento ? !editandoEtapa : !ativo;
+  const mensagem = evento ? editandoEtapa ? "Corrija os campos necessários e salve" : "Etapa registrada" : ativo ? "Preencha e salve" : "Aguardando etapa anterior";
+  const cancelarEdicao = () => {
+    setHorario(dataHoraLocal(evento?.ocorrido_em));
+    setLocalizacao(evento?.localizacao_texto ?? "");
+    setTimemark(evidencia?.timemark_url ?? "");
+    setFoto(null);
+    setFotoKey((key) => key + 1);
+    setEditandoEtapa(false);
+  };
+  return <Fragment><td className={`p-2 align-top min-w-[190px] ${ativo || editandoEtapa ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Horário ${etapa}`} type="datetime-local" value={horario} disabled={bloqueado} onChange={(e) => setHorario(e.target.value)} className="h-8 text-xs" /><Input aria-label={`Localização ${etapa}`} value={localizacao} disabled={bloqueado} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Localização" className="h-8 text-xs" />{evento && !editandoEtapa && <Button variant="outline" size="sm" className="w-full h-8" onClick={() => { setHorario(dataHoraLocal(evento.ocorrido_em)); setLocalizacao(evento.localizacao_texto ?? ""); setTimemark(evidencia?.timemark_url ?? ""); setEditandoEtapa(true); }}><Pencil className="w-3 h-3 mr-1" />Editar etapa</Button>}{evento && editandoEtapa && <div className="flex gap-1"><Button size="sm" className="flex-1 h-8" disabled={corrigirMutation.isPending} onClick={() => corrigirMutation.mutate()}><Save className="w-3 h-3 mr-1" />{corrigirMutation.isPending ? "Salvando…" : "Salvar correção"}</Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Cancelar correção" onClick={cancelarEdicao}><X className="w-3 h-3" /></Button></div>}<div className="text-[11px] text-muted-foreground">{mensagem}</div></div></td><td className={`p-2 align-top min-w-[230px] ${ativo || editandoEtapa ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Link ${etapa}`} type="url" value={timemark} disabled={evento ? !editandoEtapa : !ativo} onChange={(e) => setTimemark(e.target.value)} placeholder="Link TimeMark ou evidência" className="h-8 text-xs" /><Input key={fotoKey} aria-label={`Foto ${etapa}`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={evento ? !editandoEtapa : !ativo} onChange={(e) => setFoto(e.target.files?.[0] ?? null)} className="h-8 text-xs file:text-xs" />{evento ? <EvidenceLink evidencia={evidencia} /> : <Button size="sm" className="w-full h-8" disabled={!ativo || mutation.isPending} onClick={() => mutation.mutate()}><Save className="w-3 h-3 mr-1" />{mutation.isPending ? "Salvando…" : "Salvar etapa"}</Button>}</div></td></Fragment>;
 }
