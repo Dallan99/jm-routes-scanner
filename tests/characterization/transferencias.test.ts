@@ -23,6 +23,10 @@ const saidaXptMigration = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20260717110000_transferencias_saida_xpt.sql"),
   "utf8",
 );
+const correcaoEtapaMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20260717143000_corrigir_etapa_transferencia.sql"),
+  "utf8",
+);
 const pageSource = readFileSync(
   resolve(process.cwd(), "src/routes/_authenticated/transferencias.tsx"),
   "utf8",
@@ -138,6 +142,15 @@ describe("Transferências — operação inline", () => {
     expect(funcoes).toContain("O horário não pode ser posterior à etapa seguinte");
     expect(funcoes).toContain("foto_substituida");
     expect(funcoes).toContain("link_corrigido");
+  });
+
+  it("corrige a etapa por RPC autenticada sem depender de chave secreta no Vercel", () => {
+    const funcoes = readFileSync(resolve(process.cwd(), "src/lib/transferencias.functions.ts"), "utf8");
+    expect(funcoes).toContain('"corrigir_etapa_transferencia"');
+    expect(correcaoEtapaMigration).toContain("SECURITY DEFINER");
+    expect(correcaoEtapaMigration).toContain("transferencia_base_access(v_uid, v_t.base_id)");
+    expect(correcaoEtapaMigration).toContain("GRANT EXECUTE ON FUNCTION public.corrigir_etapa_transferencia");
+    expect(correcaoEtapaMigration).not.toMatch(/\bDROP\s+TABLE\b|\bTRUNCATE\b/i);
   });
 
   it("edita pela política de acesso existente e mantém auditoria", () => {
