@@ -24,6 +24,7 @@ import { contextoBaseOperacional } from "@/lib/base-operacional.functions";
 import {
   caminhoEvidenciaTransferencia,
   cancelarTransferencia,
+  corrigirMarcoTransferencia,
   editarTransferencia,
   listarTransferencias,
   proximaEtapa,
@@ -125,6 +126,7 @@ function TransferenciasPage() {
   const criarLoteFn = useServerFn(criarTransferenciasLote);
   const marcoLoteFn = useServerFn(registrarMarcosTransferenciaLote);
   const marcoFn = useServerFn(registrarMarcoTransferencia);
+  const corrigirMarcoFn = useServerFn(corrigirMarcoTransferencia);
   const editarFn = useServerFn(editarTransferencia);
   const cancelarFn = useServerFn(cancelarTransferencia);
   const qc = useQueryClient();
@@ -407,10 +409,10 @@ function TransferenciasPage() {
                     <td className="p-3"><b>{t.motorista}</b><div className="text-xs text-muted-foreground">{t.codigo}</div></td>
                     <td className="p-3 font-mono">{t.placa}</td>
                     <td className="p-3 font-semibold">{t.service}</td>
-                    <EtapaFormCells transferencia={t} etapa="chegada_service" evento={chegadaService} evidencia={evidChegada} ativo={proxima === "chegada_service"} registrarFn={marcoFn} onSuccess={refresh} />
-                    <EtapaFormCells transferencia={t} etapa="saida_service" evento={saidaService} evidencia={evidSaida} ativo={proxima === "saida_service"} registrarFn={marcoFn} onSuccess={refresh} />
-                    <EtapaFormCells transferencia={t} etapa="chegada_xpt" evento={chegadaXpt} evidencia={evidXpt} ativo={proxima === "chegada_xpt"} registrarFn={marcoFn} onSuccess={refresh} />
-                    <EtapaFormCells transferencia={t} etapa="saida_xpt" evento={saidaXpt} evidencia={evidSaidaXpt} ativo={proxima === "saida_xpt"} registrarFn={marcoFn} onSuccess={refresh} />
+                    <EtapaFormCells transferencia={t} etapa="chegada_service" evento={chegadaService} evidencia={evidChegada} ativo={proxima === "chegada_service"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
+                    <EtapaFormCells transferencia={t} etapa="saida_service" evento={saidaService} evidencia={evidSaida} ativo={proxima === "saida_service"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
+                    <EtapaFormCells transferencia={t} etapa="chegada_xpt" evento={chegadaXpt} evidencia={evidXpt} ativo={proxima === "chegada_xpt"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
+                    <EtapaFormCells transferencia={t} etapa="saida_xpt" evento={saidaXpt} evidencia={evidSaidaXpt} ativo={proxima === "saida_xpt"} registrarFn={marcoFn} corrigirFn={corrigirMarcoFn} onSuccess={refresh} />
                     <td className="p-3 text-center font-semibold">{duracao(permanencia)}</td>
                     <td className={`p-3 text-center font-semibold ${situacao.cor}`}>{duracao(deslocamento)}</td>
                     <td className="p-3 text-center"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${situacao.badge}`}>{situacao.label}</span></td>
@@ -540,12 +542,13 @@ function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: {
   return <Dialog open={!!etapa} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{titulo}</DialogTitle><DialogDescription>O mesmo horário será aplicado aos {ids.length} veículos selecionados. As evidências poderão ser anexadas depois.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Ex.: SP17" /></div>{etapa === "saida_service" && new Date(horario).getHours() >= 9 && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">Saída após 09:00: responsabilidade atribuída automaticamente ao Mercado Livre por atraso no carregamento/liberação.</div>}</div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!localizacao.trim() || !ids.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Registrando…" : "Registrar em lote"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function EtapaFormCells({ transferencia, etapa, evento, evidencia, ativo, registrarFn, onSuccess }: { transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa; evento?: TransferenciaDetalhe["eventos"][number]; evidencia?: TransferenciaDetalhe["evidencias"][number]; ativo: boolean; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcoTransferencia>>; onSuccess: () => void }) {
-  const [horario, setHorario] = useState(() => dataHoraLocal());
-  const [localizacao, setLocalizacao] = useState("");
+function EtapaFormCells({ transferencia, etapa, evento, evidencia, ativo, registrarFn, corrigirFn, onSuccess }: { transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa; evento?: TransferenciaDetalhe["eventos"][number]; evidencia?: TransferenciaDetalhe["evidencias"][number]; ativo: boolean; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcoTransferencia>>; corrigirFn: ReturnType<typeof useServerFn<typeof corrigirMarcoTransferencia>>; onSuccess: () => void }) {
+  const [horario, setHorario] = useState(() => dataHoraLocal(evento?.ocorrido_em));
+  const [localizacao, setLocalizacao] = useState(evento?.localizacao_texto ?? "");
   const [foto, setFoto] = useState<File | null>(null);
   const [timemark, setTimemark] = useState("");
   const [fotoKey, setFotoKey] = useState(0);
+  const [editandoHorario, setEditandoHorario] = useState(false);
   const mutation = useMutation({
     mutationFn: async () => {
       if (!ativo || evento) throw new Error("Esta etapa ainda não está disponível.");
@@ -566,7 +569,12 @@ function EtapaFormCells({ transferencia, etapa, evento, evidencia, ativo, regist
     onSuccess: () => { toast.success("Etapa registrada."); setFoto(null); setFotoKey((key) => key + 1); setTimemark(""); onSuccess(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar etapa."),
   });
-  const bloqueado = !ativo || !!evento;
-  const mensagem = evento ? "Etapa registrada" : ativo ? "Preencha e salve" : "Aguardando etapa anterior";
-  return <Fragment><td className={`p-2 align-top min-w-[190px] ${ativo ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Horário ${etapa}`} type="datetime-local" value={evento ? dataHoraLocal(evento.ocorrido_em) : horario} disabled={bloqueado} onChange={(e) => setHorario(e.target.value)} className="h-8 text-xs" /><Input aria-label={`Localização ${etapa}`} value={evento?.localizacao_texto ?? localizacao} disabled={bloqueado} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Localização" className="h-8 text-xs" /><div className="text-[11px] text-muted-foreground">{mensagem}</div></div></td><td className={`p-2 align-top min-w-[230px] ${ativo ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Link ${etapa}`} type="url" value={evento ? evidencia?.timemark_url ?? "" : timemark} disabled={bloqueado} onChange={(e) => setTimemark(e.target.value)} placeholder="Link TimeMark ou evidência" className="h-8 text-xs" /><Input key={fotoKey} aria-label={`Foto ${etapa}`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={bloqueado} onChange={(e) => setFoto(e.target.files?.[0] ?? null)} className="h-8 text-xs file:text-xs" />{evento ? <EvidenceLink evidencia={evidencia} /> : <Button size="sm" className="w-full h-8" disabled={!ativo || mutation.isPending} onClick={() => mutation.mutate()}><Save className="w-3 h-3 mr-1" />{mutation.isPending ? "Salvando…" : "Salvar etapa"}</Button>}</div></td></Fragment>;
+  const corrigirMutation = useMutation({
+    mutationFn: () => corrigirFn({ data: { transferenciaId: transferencia.id, etapa, ocorridoEm: new Date(horario).toISOString(), localizacaoTexto: localizacao || undefined } }),
+    onSuccess: () => { toast.success("Horário corrigido."); setEditandoHorario(false); onSuccess(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao corrigir horário."),
+  });
+  const bloqueado = evento ? !editandoHorario : !ativo;
+  const mensagem = evento ? editandoHorario ? "Corrija e salve" : "Etapa registrada" : ativo ? "Preencha e salve" : "Aguardando etapa anterior";
+  return <Fragment><td className={`p-2 align-top min-w-[190px] ${ativo || editandoHorario ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Horário ${etapa}`} type="datetime-local" value={horario} disabled={bloqueado} onChange={(e) => setHorario(e.target.value)} className="h-8 text-xs" /><Input aria-label={`Localização ${etapa}`} value={localizacao} disabled={bloqueado} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Localização" className="h-8 text-xs" />{evento && !editandoHorario && <Button variant="outline" size="sm" className="w-full h-8" onClick={() => { setHorario(dataHoraLocal(evento.ocorrido_em)); setLocalizacao(evento.localizacao_texto ?? ""); setEditandoHorario(true); }}><Pencil className="w-3 h-3 mr-1" />Editar horário</Button>}{evento && editandoHorario && <div className="flex gap-1"><Button size="sm" className="flex-1 h-8" disabled={corrigirMutation.isPending} onClick={() => corrigirMutation.mutate()}><Save className="w-3 h-3 mr-1" />{corrigirMutation.isPending ? "Salvando…" : "Salvar correção"}</Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Cancelar correção" onClick={() => { setHorario(dataHoraLocal(evento.ocorrido_em)); setLocalizacao(evento.localizacao_texto ?? ""); setEditandoHorario(false); }}><X className="w-3 h-3" /></Button></div>}<div className="text-[11px] text-muted-foreground">{mensagem}</div></div></td><td className={`p-2 align-top min-w-[230px] ${ativo ? "bg-sky-50/60" : ""}`}><div className="space-y-2"><Input aria-label={`Link ${etapa}`} type="url" value={evento ? evidencia?.timemark_url ?? "" : timemark} disabled={!!evento || !ativo} onChange={(e) => setTimemark(e.target.value)} placeholder="Link TimeMark ou evidência" className="h-8 text-xs" /><Input key={fotoKey} aria-label={`Foto ${etapa}`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!!evento || !ativo} onChange={(e) => setFoto(e.target.files?.[0] ?? null)} className="h-8 text-xs file:text-xs" />{evento ? <EvidenceLink evidencia={evidencia} /> : <Button size="sm" className="w-full h-8" disabled={!ativo || mutation.isPending} onClick={() => mutation.mutate()}><Save className="w-3 h-3 mr-1" />{mutation.isPending ? "Salvando…" : "Salvar etapa"}</Button>}</div></td></Fragment>;
 }
