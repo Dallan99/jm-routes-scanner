@@ -165,6 +165,7 @@ function TriagemPage() {
   const concluirRessalvaFn = useServerFn(concluirRotaComRessalva);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastRef = useRef<{ codigo: string; ts: number } | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [codigo, setCodigo] = useState("");
   const [session, setSession] = useState<PersistedSession>(defaultSession);
   const [hydrated, setHydrated] = useState(false);
@@ -277,6 +278,22 @@ function TriagemPage() {
   const rotaConcluidaRessalva =
     rotaAtual?.status === "concluida_ressalva";
 
+  const agendarAtualizacoes = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      void qc.invalidateQueries({ queryKey: ["triagem-ultimas"] });
+      void qc.invalidateQueries({ queryKey: ["triagem-resumo"] });
+      void qc.invalidateQueries({ queryKey: ["triagem-rotas"] });
+      void qc.invalidateQueries({ queryKey: ["triagem-rota-operacao"] });
+      void qc.invalidateQueries({ queryKey: ["triagem-pendentes"] });
+      refreshTimerRef.current = null;
+    }, 800);
+  }, [qc]);
+
+  useEffect(() => () => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+  }, []);
+
   // Se a rota selecionada bateu 100%, mantém aberta mas indica; se sumiu da lista, limpa.
   useEffect(() => {
     if (!rotaSelecionada || !rotas.data) return;
@@ -298,11 +315,9 @@ function TriagemPage() {
       });
     },
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["triagem-ultimas"] });
-      qc.invalidateQueries({ queryKey: ["triagem-resumo"] });
-      qc.invalidateQueries({ queryKey: ["triagem-rotas"] });
-      qc.invalidateQueries({ queryKey: ["triagem-rota-operacao"] });
-      qc.invalidateQueries({ queryKey: ["triagem-pendentes"] });
+      // Consolida os refetches quando há vários bips seguidos. O resultado do bip
+      // aparece imediatamente, sem cinco consultas disputando a próxima leitura.
+      agendarAtualizacoes();
       const isOk = res.resultado === "ok";
       const isWarn = res.resultado === "duplicado";
       if (isOk) {
