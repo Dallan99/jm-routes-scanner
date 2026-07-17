@@ -95,6 +95,29 @@ describe("Transferências — saída do XPT", () => {
   });
 });
 
+describe("Transferências — operação inline", () => {
+  it("mostra o Service da base e cria quantas linhas de rota forem necessárias", () => {
+    expect(pageSource).toContain("serviceBase ? (");
+    expect(pageSource).toContain("Nova rota");
+    expect(pageSource).toContain("[...atual, novoRascunho");
+    expect(pageSource).toContain("RascunhoRotaRow");
+  });
+
+  it("mantém edição, exclusão, conclusão e marcos dentro da tabela", () => {
+    expect(pageSource).toContain("EditarRotaRow");
+    expect(pageSource).toContain("MarcoInlineRow");
+    expect(pageSource).toContain('title="Excluir rota"');
+    expect(pageSource).toContain('title={proxima === "saida_xpt" ? "Concluir transferência"');
+  });
+
+  it("edita pela política de acesso existente e mantém auditoria", () => {
+    expect(migration).toContain('CREATE POLICY "transferencias update base"');
+    expect(migration).toContain("transferencia_base_access(auth.uid(), base_id)");
+    expect(pageSource).toContain("excluirMutation");
+    expect(readFileSync(resolve(process.cwd(), "src/lib/transferencias.functions.ts"), "utf8")).toContain('acao: "transferencia.editar"');
+  });
+});
+
 describe("Transferências — segurança e integridade SQL", () => {
   it("libera visão global somente para admin e prende demais ao profiles.base_id", () => {
     const inicio = migration.indexOf("CREATE OR REPLACE FUNCTION public.transferencia_base_access");

@@ -13,6 +13,8 @@ Controlar a viagem de transferência entre o Service e a base XPT diretamente no
 
 Os marcos só podem ser registrados nessa ordem. O banco impede etapa duplicada e horários cronologicamente incompatíveis.
 
+No painel operacional, o Service é preenchido automaticamente a partir da base conhecida. O botão **Nova rota** adiciona rascunhos em linhas independentes, permitindo cadastrar quantas rotas forem necessárias sem abrir outra tela. Rotas existentes podem ser editadas na linha, excluídas da operação por cancelamento auditado e concluídas após a chegada no XPT.
+
 ## Evidência
 
 Cada etapa pode conter:

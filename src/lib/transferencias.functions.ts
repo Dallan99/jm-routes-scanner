@@ -375,6 +375,50 @@ export const cancelarTransferencia = createServerFn({ method: "POST" })
     return result;
   });
 
+const editarSchema = z.object({
+  transferenciaId: z.string().uuid(),
+  service: z.string().trim().min(2).max(120),
+  motorista: z.string().trim().min(2).max(160),
+  placa: z.string().trim().min(5).max(20),
+  tipoVeiculo: z.string().trim().max(80).optional(),
+});
+
+export const editarTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => editarSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: anterior, error: leituraError } = await context.supabase
+      .from("transferencias")
+      .select("id, service, motorista, placa, tipo_veiculo, status")
+      .eq("id", data.transferenciaId)
+      .single();
+    if (leituraError) throw new Error(leituraError.message);
+    if (anterior.status === "cancelada") throw new Error("Transferência cancelada não pode ser editada.");
+
+    const novo = {
+      service: data.service.toUpperCase(),
+      motorista: data.motorista.trim(),
+      placa: data.placa.replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
+      tipo_veiculo: data.tipoVeiculo?.trim() || null,
+    };
+    const { data: result, error } = await context.supabase
+      .from("transferencias")
+      .update(novo)
+      .eq("id", data.transferenciaId)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const { registrarAuditInterno } = await import("./audit.server");
+    await registrarAuditInterno(context.supabase, context.userId, {
+      acao: "transferencia.editar",
+      entidade: "transferencia",
+      entidade_id: data.transferenciaId,
+      detalhes: { anterior, novo },
+    });
+    return result;
+  });
+
 export const salvarSlaTransferencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>

@@ -1,25 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   AlertTriangle,
   Camera,
+  Check,
   CheckCircle2,
   Clock3,
   ExternalLink,
-  MoreVertical,
+  Pencil,
   Plus,
   RefreshCcw,
   Route as RouteIcon,
+  Save,
+  Trash2,
   Truck,
+  X,
 } from "lucide-react";
 import { RequireBaseOperacional } from "@/components/base-operacional-selector";
 import { useBaseOperacional } from "@/lib/base-operacional-context";
 import { contextoBaseOperacional } from "@/lib/base-operacional.functions";
 import {
   caminhoEvidenciaTransferencia,
+  cancelarTransferencia,
+  editarTransferencia,
   listarTransferencias,
   proximaEtapa,
   registrarMarcoTransferencia,
@@ -36,7 +42,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -94,6 +99,14 @@ function serviceDaBase(nome?: string) {
   return "";
 }
 
+const SERVICES_OPERACIONAIS = ["SSP20", "SSP15", "SSP34", "SSP25"] as const;
+
+type RascunhoRota = LinhaCadastroTransferencia & { id: string };
+
+function novoRascunho(service: string): RascunhoRota {
+  return { id: crypto.randomUUID(), service, motorista: "", placa: "", tipoVeiculo: "" };
+}
+
 function TransferenciasGuard() {
   return (
     <RequireBaseOperacional
@@ -112,13 +125,16 @@ function TransferenciasPage() {
   const criarLoteFn = useServerFn(criarTransferenciasLote);
   const marcoLoteFn = useServerFn(registrarMarcosTransferenciaLote);
   const marcoFn = useServerFn(registrarMarcoTransferencia);
+  const editarFn = useServerFn(editarTransferencia);
+  const cancelarFn = useServerFn(cancelarTransferencia);
   const qc = useQueryClient();
 
   const [dataRota, setDataRota] = useState(diaOperacional ?? hojeYmd());
   const [service, setService] = useState("todos");
   const [busca, setBusca] = useState("");
   const [selecionados, setSelecionados] = useState<string[]>([]);
-  const [adicionarOpen, setAdicionarOpen] = useState(false);
+  const [rascunhos, setRascunhos] = useState<RascunhoRota[]>([]);
+  const [editando, setEditando] = useState<TransferenciaDetalhe | null>(null);
   const [marcoLote, setMarcoLote] = useState<TransferenciaEtapa | null>(null);
   const [marcoIndividual, setMarcoIndividual] = useState<{ transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa } | null>(null);
 
@@ -129,6 +145,7 @@ function TransferenciasPage() {
   });
 
   const isAdmin = contexto.data?.isAdmin === true;
+  const serviceBase = serviceDaBase(base?.nome);
 
   const lista = useQuery({
     queryKey: ["transferencias-painel", dataRota, base?.id, isAdmin],
@@ -147,19 +164,63 @@ function TransferenciasPage() {
   const linhas = useMemo(() => {
     const termo = busca.trim().toLocaleUpperCase("pt-BR");
     return (lista.data ?? []).filter((t) => {
-      if (service !== "todos" && t.service !== service) return false;
+      if (t.status === "cancelada") return false;
+      if (!serviceBase && service !== "todos" && t.service !== service) return false;
       if (!termo) return true;
       return [t.motorista, t.placa, t.codigo, t.service, t.base_nome]
         .join(" ")
         .toLocaleUpperCase("pt-BR")
         .includes(termo);
     });
-  }, [lista.data, busca, service]);
+  }, [lista.data, busca, service, serviceBase]);
 
   const services = useMemo(
-    () => Array.from(new Set((lista.data ?? []).map((t) => t.service))).sort(),
+    () => Array.from(new Set([...SERVICES_OPERACIONAIS, ...(lista.data ?? []).map((t) => t.service)])).sort(),
     [lista.data],
   );
+
+  const criarMutation = useMutation({
+    mutationFn: async (rascunho: RascunhoRota) => {
+      const resultado = await criarLoteFn({
+        data: {
+          baseId: base!.id,
+          dataOperacional: dataRota,
+          linhas: [{
+            service: serviceBase || rascunho.service,
+            motorista: rascunho.motorista,
+            placa: rascunho.placa.toUpperCase(),
+            tipoVeiculo: rascunho.tipoVeiculo || undefined,
+          }],
+        },
+      });
+      if (!resultado.sucessos) throw new Error(resultado.detalhes[0]?.mensagem ?? "Não foi possível criar a rota.");
+      return resultado;
+    },
+    onSuccess: (_resultado, rascunho) => {
+      setRascunhos((atual) => atual.filter((item) => item.id !== rascunho.id));
+      toast.success("Rota adicionada.");
+      refresh();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar rota."),
+  });
+
+  const editarMutation = useMutation({
+    mutationFn: (dados: { transferenciaId: string; service: string; motorista: string; placa: string; tipoVeiculo?: string }) => editarFn({ data: dados }),
+    onSuccess: () => { toast.success("Rota atualizada."); setEditando(null); refresh(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao editar rota."),
+  });
+
+  const excluirMutation = useMutation({
+    mutationFn: (transferenciaId: string) => cancelarFn({ data: { transferenciaId, justificativa: "Excluída pela operação na tela de Transferências." } }),
+    onSuccess: () => { toast.success("Rota excluída da operação."); refresh(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao excluir rota."),
+  });
+
+  const concluirMutation = useMutation({
+    mutationFn: (transferencia: TransferenciaDetalhe) => marcoFn({ data: { transferenciaId: transferencia.id, etapa: "saida_xpt", ocorridoEm: new Date().toISOString(), localizacaoTexto: "XPT" } }),
+    onSuccess: () => { toast.success("Transferência concluída."); refresh(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao concluir transferência."),
+  });
 
   const indicadores = useMemo(() => {
     const concluidas = linhas.filter((t) => eventoDe(t, "chegada_xpt"));
@@ -226,8 +287,8 @@ function TransferenciasPage() {
           <Button variant="outline" onClick={() => refresh()} disabled={lista.isFetching}>
             <RefreshCcw className={`w-4 h-4 mr-2 ${lista.isFetching ? "animate-spin" : ""}`} /> Atualizar
           </Button>
-          <Button onClick={() => setAdicionarOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" /> Adicionar veículos
+          <Button onClick={() => setRascunhos((atual) => [...atual, novoRascunho(serviceBase || (service === "todos" ? services[0] : service))])} disabled={!base?.id}>
+            <Plus className="w-4 h-4 mr-2" /> Nova rota
           </Button>
         </div>
       </header>
@@ -240,13 +301,17 @@ function TransferenciasPage() {
           </div>
           <div>
             <Label>Service (origem)</Label>
-            <Select value={service} onValueChange={setService}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Services</SelectItem>
-                {services.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {serviceBase ? (
+              <Input value={serviceBase} disabled className="font-semibold" />
+            ) : (
+              <Select value={service} onValueChange={setService}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Services</SelectItem>
+                  {services.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div>
             <Label>Data da rota</Label>
@@ -278,6 +343,7 @@ function TransferenciasPage() {
                 </th>
                 <th className="p-3 text-left">Motorista</th>
                 <th className="p-3 text-left">Placa</th>
+                <th className="p-3 text-left">Service</th>
                 <th className="p-3 text-center" colSpan={2}>Chegada Service</th>
                 <th className="p-3 text-center" colSpan={2}>Saída Service</th>
                 <th className="p-3 text-center" colSpan={2}>Chegada XPT</th>
@@ -288,6 +354,7 @@ function TransferenciasPage() {
                 <th className="p-3 text-center">Ações</th>
               </tr>
               <tr className="text-xs text-muted-foreground border-t">
+                <th />
                 <th />
                 <th />
                 <th />
@@ -303,6 +370,18 @@ function TransferenciasPage() {
               </tr>
             </thead>
             <tbody>
+              {rascunhos.map((rascunho) => (
+                <RascunhoRotaRow
+                  key={rascunho.id}
+                  rascunho={rascunho}
+                  serviceFixo={serviceBase}
+                  services={services}
+                  salvando={criarMutation.isPending}
+                  onChange={(novo) => setRascunhos((atual) => atual.map((item) => item.id === novo.id ? novo : item))}
+                  onExcluir={() => setRascunhos((atual) => atual.filter((item) => item.id !== rascunho.id))}
+                  onSalvar={() => criarMutation.mutate(rascunho)}
+                />
+              ))}
               {linhas.map((t) => {
                 const chegadaService = eventoDe(t, "chegada_service");
                 const saidaService = eventoDe(t, "saida_service");
@@ -315,8 +394,10 @@ function TransferenciasPage() {
                 const evidSaida = t.evidencias.find((e) => e.etapa === "saida_service");
                 const evidXpt = t.evidencias.find((e) => e.etapa === "chegada_xpt");
                 const evidSaidaXpt = t.evidencias.find((e) => e.etapa === "saida_xpt");
+                const proxima = proximaEtapa(t.eventos);
                 return (
-                  <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20">
+                  <Fragment key={t.id}>
+                  <tr className="border-b last:border-0 hover:bg-muted/20">
                     <td className="p-3 text-center">
                       <input
                         type="checkbox"
@@ -326,26 +407,51 @@ function TransferenciasPage() {
                     </td>
                     <td className="p-3"><b>{t.motorista}</b><div className="text-xs text-muted-foreground">{t.codigo}</div></td>
                     <td className="p-3 font-mono">{t.placa}</td>
-                    <td className="p-3 text-center font-mono">{hora(chegadaService?.ocorrido_em)}</td>
+                    <td className="p-3 font-semibold">{t.service}</td>
+                    <td className="p-3 text-center font-mono"><HorarioMarco evento={chegadaService} ativo={proxima === "chegada_service"} onClick={() => setMarcoIndividual({ transferencia: t, etapa: "chegada_service" })} /></td>
                     <td className="p-3 text-center"><EvidenceLink evidencia={evidChegada} /></td>
-                    <td className="p-3 text-center font-mono">{hora(saidaService?.ocorrido_em)}</td>
+                    <td className="p-3 text-center font-mono"><HorarioMarco evento={saidaService} ativo={proxima === "saida_service"} onClick={() => setMarcoIndividual({ transferencia: t, etapa: "saida_service" })} /></td>
                     <td className="p-3 text-center"><EvidenceLink evidencia={evidSaida} /></td>
-                    <td className="p-3 text-center font-mono">{hora(chegadaXpt?.ocorrido_em)}</td>
+                    <td className="p-3 text-center font-mono"><HorarioMarco evento={chegadaXpt} ativo={proxima === "chegada_xpt"} onClick={() => setMarcoIndividual({ transferencia: t, etapa: "chegada_xpt" })} /></td>
                     <td className="p-3 text-center"><EvidenceLink evidencia={evidXpt} /></td>
-                    <td className="p-3 text-center font-mono">{hora(saidaXpt?.ocorrido_em)}</td>
+                    <td className="p-3 text-center font-mono"><HorarioMarco evento={saidaXpt} ativo={false} onClick={() => undefined} /></td>
                     <td className="p-3 text-center"><EvidenceLink evidencia={evidSaidaXpt} /></td>
                     <td className="p-3 text-center font-semibold">{duracao(permanencia)}</td>
                     <td className={`p-3 text-center font-semibold ${situacao.cor}`}>{duracao(deslocamento)}</td>
                     <td className="p-3 text-center"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${situacao.badge}`}>{situacao.label}</span></td>
-                    <td className="p-3 text-center"><Button variant="ghost" size="icon" title="Registrar próxima etapa" disabled={!proximaEtapa(t.eventos)} onClick={() => { const etapa = proximaEtapa(t.eventos); if (etapa) setMarcoIndividual({ transferencia: t, etapa }); }}><MoreVertical className="w-4 h-4" /></Button></td>
+                    <td className="p-3 text-center"><div className="flex justify-center gap-1">
+                      <Button variant="ghost" size="icon" title="Editar rota" onClick={() => { setMarcoIndividual(null); setEditando(t); }}><Pencil className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" title="Excluir rota" className="text-destructive" disabled={excluirMutation.isPending} onClick={() => excluirMutation.mutate(t.id)}><Trash2 className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" title={proxima === "saida_xpt" ? "Concluir transferência" : saidaXpt ? "Transferência concluída" : "Disponível após a chegada no XPT"} className="text-emerald-600" disabled={proxima !== "saida_xpt" || concluirMutation.isPending} onClick={() => concluirMutation.mutate(t)}><Check className="w-4 h-4" /></Button>
+                    </div></td>
                   </tr>
+                  {editando?.id === t.id && (
+                    <EditarRotaRow
+                      transferencia={editando}
+                      serviceFixo={serviceBase}
+                      services={services}
+                      salvando={editarMutation.isPending}
+                      onChange={setEditando}
+                      onCancelar={() => setEditando(null)}
+                      onSalvar={() => editarMutation.mutate({ transferenciaId: editando.id, service: serviceBase || editando.service, motorista: editando.motorista, placa: editando.placa, tipoVeiculo: editando.tipo_veiculo || undefined })}
+                    />
+                  )}
+                  {marcoIndividual?.transferencia.id === t.id && (
+                    <MarcoInlineRow
+                      marco={marcoIndividual}
+                      registrarFn={marcoFn}
+                      onCancelar={() => setMarcoIndividual(null)}
+                      onSuccess={() => { setMarcoIndividual(null); refresh(); }}
+                    />
+                  )}
+                  </Fragment>
                 );
               })}
-              {!lista.isLoading && linhas.length === 0 && (
-                <tr><td colSpan={15} className="p-12 text-center text-muted-foreground">Nenhum veículo encontrado para os filtros selecionados.</td></tr>
+              {!lista.isLoading && linhas.length === 0 && rascunhos.length === 0 && (
+                <tr><td colSpan={16} className="p-12 text-center text-muted-foreground">Nenhum veículo encontrado para os filtros selecionados.</td></tr>
               )}
               {lista.isLoading && (
-                <tr><td colSpan={15} className="p-12 text-center text-muted-foreground">Carregando transferências…</td></tr>
+                <tr><td colSpan={16} className="p-12 text-center text-muted-foreground">Carregando transferências…</td></tr>
               )}
             </tbody>
           </table>
@@ -369,31 +475,16 @@ function TransferenciasPage() {
         </Card>
         <Card className="p-4">
           <h2 className="font-semibold mb-3">Observações gerais</h2>
-          <p className="text-sm text-muted-foreground">Use o cadastro em lote para incluir vários veículos e as caixas de seleção para registrar chegadas e saídas de uma vez.</p>
+          <p className="text-sm text-muted-foreground">Use “Nova rota” quantas vezes precisar. Os dados e marcos são preenchidos diretamente nas linhas da tabela.</p>
         </Card>
       </div>
 
-      <AdicionarVeiculosDialog
-        open={adicionarOpen}
-        onOpenChange={setAdicionarOpen}
-        baseId={base?.id}
-        servicePadrao={serviceDaBase(base?.nome)}
-        dataRota={dataRota}
-        criarFn={criarLoteFn}
-        onSuccess={refresh}
-      />
       <MarcoLoteDialog
         etapa={marcoLote}
         onOpenChange={(open) => !open && setMarcoLote(null)}
         ids={selecionados}
         registrarFn={marcoLoteFn}
         onSuccess={() => { setSelecionados([]); refresh(); }}
-      />
-      <MarcoIndividualDialog
-        marco={marcoIndividual}
-        onOpenChange={(open) => !open && setMarcoIndividual(null)}
-        registrarFn={marcoFn}
-        onSuccess={() => { setMarcoIndividual(null); refresh(); }}
       />
     </div>
   );
@@ -429,26 +520,25 @@ function Resumo({ label, valor }: { label: string; valor: string }) {
   return <div><div className="text-xs text-muted-foreground">{label}</div><b>{valor}</b></div>;
 }
 
-function parseLinhas(texto: string, servicePadrao: string, fixarService = false): LinhaCadastroTransferencia[] {
-  return texto.split(/\r?\n/).map((linha) => linha.trim()).filter(Boolean).map((linha) => {
-    const partes = linha.split(/\t|;|,/).map((x) => x.trim());
-    if (partes.length >= 4) return { service: fixarService ? servicePadrao : partes[0], motorista: partes[1], placa: partes[2].toUpperCase(), tipoVeiculo: partes[3] || undefined };
-    return { service: servicePadrao, motorista: partes[0] ?? "", placa: (partes[1] ?? "").toUpperCase(), tipoVeiculo: partes[2] || undefined };
-  });
+function HorarioMarco({ evento, ativo, onClick }: { evento?: TransferenciaDetalhe["eventos"][number]; ativo: boolean; onClick: () => void }) {
+  if (evento) return <>{hora(evento.ocorrido_em)}</>;
+  if (!ativo) return <span className="text-muted-foreground">—</span>;
+  return <Button variant="outline" size="sm" className="h-7 px-2" onClick={onClick}><Plus className="w-3 h-3 mr-1" /> Registrar</Button>;
 }
 
-function AdicionarVeiculosDialog({ open, onOpenChange, baseId, servicePadrao, dataRota, criarFn, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; baseId?: string; servicePadrao: string; dataRota: string; criarFn: ReturnType<typeof useServerFn<typeof criarTransferenciasLote>>; onSuccess: () => void }) {
-  const [serviceManual, setServiceManual] = useState("");
-  const [texto, setTexto] = useState("");
-  const service = servicePadrao || serviceManual;
-  useEffect(() => { if (servicePadrao) setServiceManual(""); }, [servicePadrao]);
-  const linhas = useMemo(() => parseLinhas(texto, service, !!servicePadrao), [texto, service, servicePadrao]);
-  const mutation = useMutation({
-    mutationFn: () => criarFn({ data: { baseId: baseId!, dataOperacional: dataRota, linhas } }),
-    onSuccess: (resultado) => { toast.success(`${resultado.sucessos} veículo(s) adicionado(s).`); if (resultado.falhas) toast.warning(`${resultado.falhas} linha(s) com erro.`); setTexto(""); onOpenChange(false); onSuccess(); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar veículos."),
-  });
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Adicionar veículos</DialogTitle><DialogDescription>Cole várias linhas do Excel. Formato simples: Motorista, Placa e Tipo.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Service da base</Label><Input value={service} onChange={(e) => setServiceManual(e.target.value)} disabled={!!servicePadrao} placeholder="Informe o código do Service" /></div><div><Label>Veículos</Label><Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={"João Silva\tABC1D23\tTruck\nCarlos Santos\tDEF4G56\tVan"} /></div><p className="text-xs text-muted-foreground">{linhas.length} linha(s) identificada(s).</p></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!baseId || !service.trim() || !linhas.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Adicionando…" : `Adicionar ${linhas.length} veículo(s)`}</Button></DialogFooter></DialogContent></Dialog>;
+function ServiceField({ value, serviceFixo, services, onChange }: { value: string; serviceFixo: string; services: string[]; onChange: (value: string) => void }) {
+  if (serviceFixo) return <Input value={serviceFixo} disabled className="font-semibold" />;
+  return <Select value={value} onValueChange={onChange}><SelectTrigger><SelectValue placeholder="Service" /></SelectTrigger><SelectContent>{services.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>;
+}
+
+function RascunhoRotaRow({ rascunho, serviceFixo, services, salvando, onChange, onExcluir, onSalvar }: { rascunho: RascunhoRota; serviceFixo: string; services: string[]; salvando: boolean; onChange: (value: RascunhoRota) => void; onExcluir: () => void; onSalvar: () => void }) {
+  const valido = (serviceFixo || rascunho.service).length >= 2 && rascunho.motorista.trim().length >= 2 && rascunho.placa.trim().length >= 5;
+  return <tr className="border-b bg-primary/5"><td colSpan={16} className="p-3"><div className="grid gap-3 md:grid-cols-[1fr_1.4fr_1fr_1fr_auto] items-end"><div><Label>Service</Label><ServiceField value={rascunho.service} serviceFixo={serviceFixo} services={services} onChange={(value) => onChange({ ...rascunho, service: value })} /></div><div><Label>Motorista</Label><Input value={rascunho.motorista} onChange={(e) => onChange({ ...rascunho, motorista: e.target.value })} placeholder="Nome do motorista" /></div><div><Label>Placa</Label><Input value={rascunho.placa} onChange={(e) => onChange({ ...rascunho, placa: e.target.value.toUpperCase() })} placeholder="ABC1D23" /></div><div><Label>Tipo de veículo</Label><Input value={rascunho.tipoVeiculo ?? ""} onChange={(e) => onChange({ ...rascunho, tipoVeiculo: e.target.value })} placeholder="Truck, Van…" /></div><div className="flex gap-1"><Button size="icon" title="Salvar rota" disabled={!valido || salvando} onClick={onSalvar}><Save className="w-4 h-4" /></Button><Button variant="ghost" size="icon" title="Excluir linha" className="text-destructive" onClick={onExcluir}><Trash2 className="w-4 h-4" /></Button></div></div></td></tr>;
+}
+
+function EditarRotaRow({ transferencia, serviceFixo, services, salvando, onChange, onCancelar, onSalvar }: { transferencia: TransferenciaDetalhe; serviceFixo: string; services: string[]; salvando: boolean; onChange: (value: TransferenciaDetalhe) => void; onCancelar: () => void; onSalvar: () => void }) {
+  const valido = (serviceFixo || transferencia.service).length >= 2 && transferencia.motorista.trim().length >= 2 && transferencia.placa.trim().length >= 5;
+  return <tr className="border-b bg-amber-50/60"><td colSpan={16} className="p-3"><div className="grid gap-3 md:grid-cols-[1fr_1.4fr_1fr_1fr_auto] items-end"><div><Label>Service</Label><ServiceField value={transferencia.service} serviceFixo={serviceFixo} services={services} onChange={(value) => onChange({ ...transferencia, service: value })} /></div><div><Label>Motorista</Label><Input value={transferencia.motorista} onChange={(e) => onChange({ ...transferencia, motorista: e.target.value })} /></div><div><Label>Placa</Label><Input value={transferencia.placa} onChange={(e) => onChange({ ...transferencia, placa: e.target.value.toUpperCase() })} /></div><div><Label>Tipo de veículo</Label><Input value={transferencia.tipo_veiculo ?? ""} onChange={(e) => onChange({ ...transferencia, tipo_veiculo: e.target.value })} /></div><div className="flex gap-1"><Button size="icon" title="Salvar alterações" disabled={!valido || salvando} onClick={onSalvar}><Save className="w-4 h-4" /></Button><Button variant="ghost" size="icon" title="Cancelar edição" onClick={onCancelar}><X className="w-4 h-4" /></Button></div></div></td></tr>;
 }
 
 function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: { etapa: TransferenciaEtapa | null; onOpenChange: (open: boolean) => void; ids: string[]; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcosTransferenciaLote>>; onSuccess: () => void }) {
@@ -469,14 +559,13 @@ function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: {
   return <Dialog open={!!etapa} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{titulo}</DialogTitle><DialogDescription>O mesmo horário será aplicado aos {ids.length} veículos selecionados. As evidências poderão ser anexadas depois.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Ex.: SP17" /></div>{etapa === "saida_service" && new Date(horario).getHours() >= 9 && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">Saída após 09:00: responsabilidade atribuída automaticamente ao Mercado Livre por atraso no carregamento/liberação.</div>}</div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!localizacao.trim() || !ids.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Registrando…" : "Registrar em lote"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function MarcoIndividualDialog({ marco, onOpenChange, registrarFn, onSuccess }: { marco: { transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa } | null; onOpenChange: (open: boolean) => void; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcoTransferencia>>; onSuccess: () => void }) {
+function MarcoInlineRow({ marco, registrarFn, onCancelar, onSuccess }: { marco: { transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa }; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcoTransferencia>>; onCancelar: () => void; onSuccess: () => void }) {
   const [horario, setHorario] = useState(() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); });
   const [localizacao, setLocalizacao] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
   const [timemark, setTimemark] = useState("");
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!marco) throw new Error("Etapa não selecionada.");
       let storagePath: string | undefined;
       if (foto) {
         if (foto.size > 10 * 1024 * 1024) throw new Error("A foto deve ter no máximo 10 MB.");
@@ -494,6 +583,6 @@ function MarcoIndividualDialog({ marco, onOpenChange, registrarFn, onSuccess }: 
     onSuccess: () => { toast.success("Etapa registrada."); setFoto(null); setTimemark(""); onSuccess(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar etapa."),
   });
-  const titulo = marco ? ({ chegada_service: "Chegada no Service", saida_service: "Saída do Service", chegada_xpt: "Chegada no XPT", saida_xpt: "Saída do XPT" } as const)[marco.etapa] : "Registrar etapa";
-  return <Dialog open={!!marco} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{titulo}</DialogTitle><DialogDescription>{marco?.transferencia.motorista} · {marco?.transferencia.placa}. A foto é opcional nesta fase.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Service ou XPT" /></div><div><Label>Foto opcional</Label><Input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(e) => setFoto(e.target.files?.[0] ?? null)} /></div><div><Label>Link TimeMark opcional</Label><Input type="url" value={timemark} onChange={(e) => setTimemark(e.target.value)} placeholder="https://..." /></div></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={mutation.isPending} onClick={() => mutation.mutate()}><Camera className="w-4 h-4 mr-2" />{mutation.isPending ? "Registrando…" : "Registrar etapa"}</Button></DialogFooter></DialogContent></Dialog>;
+  const titulo = ({ chegada_service: "Chegada no Service", saida_service: "Saída do Service", chegada_xpt: "Chegada no XPT", saida_xpt: "Saída do XPT" } as const)[marco.etapa];
+  return <tr className="border-b bg-sky-50/60"><td colSpan={16} className="p-3"><div className="mb-3"><b>{titulo}</b><span className="ml-2 text-xs text-muted-foreground">{marco.transferencia.motorista} · {marco.transferencia.placa} · foto opcional</span></div><div className="grid gap-3 md:grid-cols-[1.1fr_1fr_1.2fr_1.2fr_auto] items-end"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Service ou XPT" /></div><div><Label>Foto opcional</Label><Input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(e) => setFoto(e.target.files?.[0] ?? null)} /></div><div><Label>TimeMark opcional</Label><Input type="url" value={timemark} onChange={(e) => setTimemark(e.target.value)} placeholder="https://..." /></div><div className="flex gap-1"><Button disabled={mutation.isPending} onClick={() => mutation.mutate()}><Camera className="w-4 h-4 mr-2" />{mutation.isPending ? "Registrando…" : "Registrar"}</Button><Button variant="ghost" size="icon" title="Cancelar" onClick={onCancelar}><X className="w-4 h-4" /></Button></div></div></td></tr>;
 }
