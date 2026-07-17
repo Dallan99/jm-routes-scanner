@@ -90,7 +90,7 @@ export const registrarMarcosTransferenciaLote = createServerFn({ method: "POST" 
         ? `${transferencia.codigo} · ${transferencia.placa} · ${transferencia.motorista}`
         : transferenciaId;
 
-      const { error } = await context.supabase.rpc("registrar_evento_transferencia_v2", {
+      let { error } = await context.supabase.rpc("registrar_evento_transferencia_v2", {
         p_transferencia_id: transferenciaId,
         p_etapa: data.etapa,
         p_ocorrido_em: data.ocorridoEm,
@@ -102,6 +102,25 @@ export const registrarMarcosTransferenciaLote = createServerFn({ method: "POST" 
         p_responsabilidade: data.responsabilidade || null,
         p_observacao: data.observacao || "Marco registrado pela operação em lote; evidência pendente.",
       });
+
+      const v2Ausente = error?.code === "PGRST202" || error?.message.includes("registrar_evento_transferencia_v2");
+      if (v2Ausente && data.etapa !== "saida_xpt") {
+        const legado = await context.supabase.rpc("registrar_evento_transferencia", {
+          p_transferencia_id: transferenciaId,
+          p_etapa: data.etapa,
+          p_ocorrido_em: data.ocorridoEm,
+          p_storage_path: null,
+          p_timemark_url: null,
+          p_horario_evidencia: null,
+          p_localizacao_texto: data.localizacaoTexto,
+          p_motivo_codigo: data.motivoCodigo || "OUTRO",
+          p_responsabilidade: data.responsabilidade || "EM_ANALISE",
+          p_observacao: data.observacao || "Pendente de classificação operacional.",
+        });
+        error = legado.error;
+      } else if (v2Ausente && data.etapa === "saida_xpt") {
+        error = { ...error, message: "A etapa Saída do XPT aguarda a atualização do banco." };
+      }
 
       detalhes.push({
         referencia,
