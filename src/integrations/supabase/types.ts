@@ -1384,6 +1384,32 @@ export type Database = {
         }
         Returns: Json
       }
+      registrar_evento_transferencia_v2: {
+        Args: {
+          p_etapa: string
+          p_horario_evidencia?: string | null
+          p_localizacao_texto?: string | null
+          p_motivo_codigo?: string | null
+          p_observacao?: string | null
+          p_ocorrido_em: string
+          p_responsabilidade?: string | null
+          p_storage_path?: string | null
+          p_timemark_url?: string | null
+          p_transferencia_id: string
+        }
+        Returns: Json
+      }
+      anexar_evidencia_transferencia_v2: {
+        Args: {
+          p_etapa: string
+          p_horario_evidencia?: string | null
+          p_localizacao_texto?: string | null
+          p_storage_path?: string | null
+          p_timemark_url?: string | null
+          p_transferencia_id: string
+        }
+        Returns: Json
+      }
       salvar_sla_transferencia: {
         Args: {
           p_base_id: string
@@ -1401,6 +1427,10 @@ export type Database = {
       transferencia_base_access: {
         Args: { _base_id: string; _user_id: string }
         Returns: boolean
+      }
+      transferencia_status_atual: {
+        Args: { p_transferencia_id: string }
+        Returns: string
       }
     }
     Enums: {

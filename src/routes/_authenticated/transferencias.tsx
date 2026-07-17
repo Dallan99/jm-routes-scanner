@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  Camera,
   CheckCircle2,
   Clock3,
   ExternalLink,
@@ -18,10 +19,14 @@ import { RequireBaseOperacional } from "@/components/base-operacional-selector";
 import { useBaseOperacional } from "@/lib/base-operacional-context";
 import { contextoBaseOperacional } from "@/lib/base-operacional.functions";
 import {
+  caminhoEvidenciaTransferencia,
   listarTransferencias,
+  proximaEtapa,
+  registrarMarcoTransferencia,
   type TransferenciaDetalhe,
   type TransferenciaEtapa,
 } from "@/lib/transferencias.functions";
+import { supabase } from "@/integrations/supabase/client";
 import {
   criarTransferenciasLote,
   registrarMarcosTransferenciaLote,
@@ -80,6 +85,15 @@ function eventoDe(t: TransferenciaDetalhe, etapa: TransferenciaEtapa) {
   return t.eventos.find((e) => e.etapa === etapa);
 }
 
+function serviceDaBase(nome?: string) {
+  const base = (nome ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (base.includes("ibiuna")) return "SSP20";
+  if (base.includes("guaruja")) return "SSP15";
+  if (base.includes("embu")) return "SSP34";
+  if (base.includes("franco")) return "SSP25";
+  return "";
+}
+
 function TransferenciasGuard() {
   return (
     <RequireBaseOperacional
@@ -97,6 +111,7 @@ function TransferenciasPage() {
   const contextoFn = useServerFn(contextoBaseOperacional);
   const criarLoteFn = useServerFn(criarTransferenciasLote);
   const marcoLoteFn = useServerFn(registrarMarcosTransferenciaLote);
+  const marcoFn = useServerFn(registrarMarcoTransferencia);
   const qc = useQueryClient();
 
   const [dataRota, setDataRota] = useState(diaOperacional ?? hojeYmd());
@@ -105,6 +120,7 @@ function TransferenciasPage() {
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [adicionarOpen, setAdicionarOpen] = useState(false);
   const [marcoLote, setMarcoLote] = useState<TransferenciaEtapa | null>(null);
+  const [marcoIndividual, setMarcoIndividual] = useState<{ transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa } | null>(null);
 
   const contexto = useQuery({
     queryKey: ["contexto-base-operacional"],
@@ -202,6 +218,9 @@ function TransferenciasPage() {
               <Button variant="outline" onClick={() => setMarcoLote("chegada_xpt")}>
                 Registrar chegada XPT ({selecionados.length})
               </Button>
+              <Button variant="outline" onClick={() => setMarcoLote("saida_xpt")}>
+                Registrar saída XPT ({selecionados.length})
+              </Button>
             </>
           )}
           <Button variant="outline" onClick={() => refresh()} disabled={lista.isFetching}>
@@ -262,6 +281,7 @@ function TransferenciasPage() {
                 <th className="p-3 text-center" colSpan={2}>Chegada Service</th>
                 <th className="p-3 text-center" colSpan={2}>Saída Service</th>
                 <th className="p-3 text-center" colSpan={2}>Chegada XPT</th>
+                <th className="p-3 text-center" colSpan={2}>Saída XPT</th>
                 <th className="p-3 text-center">Tempo no Service</th>
                 <th className="p-3 text-center">Deslocamento</th>
                 <th className="p-3 text-center">Situação</th>
@@ -277,6 +297,8 @@ function TransferenciasPage() {
                 <th className="p-2">TimeMark</th>
                 <th className="p-2">Horário</th>
                 <th className="p-2">Evidência</th>
+                <th className="p-2">Horário</th>
+                <th className="p-2">Evidência</th>
                 <th /><th /><th /><th />
               </tr>
             </thead>
@@ -285,12 +307,14 @@ function TransferenciasPage() {
                 const chegadaService = eventoDe(t, "chegada_service");
                 const saidaService = eventoDe(t, "saida_service");
                 const chegadaXpt = eventoDe(t, "chegada_xpt");
+                const saidaXpt = eventoDe(t, "saida_xpt");
                 const permanencia = minutosEntre(chegadaService?.ocorrido_em, saidaService?.ocorrido_em);
                 const deslocamento = minutosEntre(saidaService?.ocorrido_em, chegadaXpt?.ocorrido_em);
                 const situacao = classificar(deslocamento);
                 const evidChegada = t.evidencias.find((e) => e.etapa === "chegada_service");
                 const evidSaida = t.evidencias.find((e) => e.etapa === "saida_service");
                 const evidXpt = t.evidencias.find((e) => e.etapa === "chegada_xpt");
+                const evidSaidaXpt = t.evidencias.find((e) => e.etapa === "saida_xpt");
                 return (
                   <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20">
                     <td className="p-3 text-center">
@@ -308,18 +332,20 @@ function TransferenciasPage() {
                     <td className="p-3 text-center"><EvidenceLink evidencia={evidSaida} /></td>
                     <td className="p-3 text-center font-mono">{hora(chegadaXpt?.ocorrido_em)}</td>
                     <td className="p-3 text-center"><EvidenceLink evidencia={evidXpt} /></td>
+                    <td className="p-3 text-center font-mono">{hora(saidaXpt?.ocorrido_em)}</td>
+                    <td className="p-3 text-center"><EvidenceLink evidencia={evidSaidaXpt} /></td>
                     <td className="p-3 text-center font-semibold">{duracao(permanencia)}</td>
                     <td className={`p-3 text-center font-semibold ${situacao.cor}`}>{duracao(deslocamento)}</td>
                     <td className="p-3 text-center"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${situacao.badge}`}>{situacao.label}</span></td>
-                    <td className="p-3 text-center"><Button variant="ghost" size="icon" title="Mais ações"><MoreVertical className="w-4 h-4" /></Button></td>
+                    <td className="p-3 text-center"><Button variant="ghost" size="icon" title="Registrar próxima etapa" disabled={!proximaEtapa(t.eventos)} onClick={() => { const etapa = proximaEtapa(t.eventos); if (etapa) setMarcoIndividual({ transferencia: t, etapa }); }}><MoreVertical className="w-4 h-4" /></Button></td>
                   </tr>
                 );
               })}
               {!lista.isLoading && linhas.length === 0 && (
-                <tr><td colSpan={13} className="p-12 text-center text-muted-foreground">Nenhum veículo encontrado para os filtros selecionados.</td></tr>
+                <tr><td colSpan={15} className="p-12 text-center text-muted-foreground">Nenhum veículo encontrado para os filtros selecionados.</td></tr>
               )}
               {lista.isLoading && (
-                <tr><td colSpan={13} className="p-12 text-center text-muted-foreground">Carregando transferências…</td></tr>
+                <tr><td colSpan={15} className="p-12 text-center text-muted-foreground">Carregando transferências…</td></tr>
               )}
             </tbody>
           </table>
@@ -351,6 +377,7 @@ function TransferenciasPage() {
         open={adicionarOpen}
         onOpenChange={setAdicionarOpen}
         baseId={base?.id}
+        servicePadrao={serviceDaBase(base?.nome)}
         dataRota={dataRota}
         criarFn={criarLoteFn}
         onSuccess={refresh}
@@ -361,6 +388,12 @@ function TransferenciasPage() {
         ids={selecionados}
         registrarFn={marcoLoteFn}
         onSuccess={() => { setSelecionados([]); refresh(); }}
+      />
+      <MarcoIndividualDialog
+        marco={marcoIndividual}
+        onOpenChange={(open) => !open && setMarcoIndividual(null)}
+        registrarFn={marcoFn}
+        onSuccess={() => { setMarcoIndividual(null); refresh(); }}
       />
     </div>
   );
@@ -396,24 +429,26 @@ function Resumo({ label, valor }: { label: string; valor: string }) {
   return <div><div className="text-xs text-muted-foreground">{label}</div><b>{valor}</b></div>;
 }
 
-function parseLinhas(texto: string, servicePadrao: string): LinhaCadastroTransferencia[] {
+function parseLinhas(texto: string, servicePadrao: string, fixarService = false): LinhaCadastroTransferencia[] {
   return texto.split(/\r?\n/).map((linha) => linha.trim()).filter(Boolean).map((linha) => {
     const partes = linha.split(/\t|;|,/).map((x) => x.trim());
-    if (partes.length >= 4) return { service: partes[0], motorista: partes[1], placa: partes[2].toUpperCase(), tipoVeiculo: partes[3] || undefined };
+    if (partes.length >= 4) return { service: fixarService ? servicePadrao : partes[0], motorista: partes[1], placa: partes[2].toUpperCase(), tipoVeiculo: partes[3] || undefined };
     return { service: servicePadrao, motorista: partes[0] ?? "", placa: (partes[1] ?? "").toUpperCase(), tipoVeiculo: partes[2] || undefined };
   });
 }
 
-function AdicionarVeiculosDialog({ open, onOpenChange, baseId, dataRota, criarFn, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; baseId?: string; dataRota: string; criarFn: ReturnType<typeof useServerFn<typeof criarTransferenciasLote>>; onSuccess: () => void }) {
-  const [service, setService] = useState("");
+function AdicionarVeiculosDialog({ open, onOpenChange, baseId, servicePadrao, dataRota, criarFn, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; baseId?: string; servicePadrao: string; dataRota: string; criarFn: ReturnType<typeof useServerFn<typeof criarTransferenciasLote>>; onSuccess: () => void }) {
+  const [serviceManual, setServiceManual] = useState("");
   const [texto, setTexto] = useState("");
-  const linhas = useMemo(() => parseLinhas(texto, service), [texto, service]);
+  const service = servicePadrao || serviceManual;
+  useEffect(() => { if (servicePadrao) setServiceManual(""); }, [servicePadrao]);
+  const linhas = useMemo(() => parseLinhas(texto, service, !!servicePadrao), [texto, service, servicePadrao]);
   const mutation = useMutation({
     mutationFn: () => criarFn({ data: { baseId: baseId!, dataOperacional: dataRota, linhas } }),
     onSuccess: (resultado) => { toast.success(`${resultado.sucessos} veículo(s) adicionado(s).`); if (resultado.falhas) toast.warning(`${resultado.falhas} linha(s) com erro.`); setTexto(""); onOpenChange(false); onSuccess(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar veículos."),
   });
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Adicionar veículos</DialogTitle><DialogDescription>Cole várias linhas do Excel. Formato simples: Motorista, Placa e Tipo. Também aceitamos Service, Motorista, Placa e Tipo.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Service padrão</Label><Input value={service} onChange={(e) => setService(e.target.value)} placeholder="Ex.: SP17 - Mercado Livre" /></div><div><Label>Veículos</Label><Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={"João Silva\tABC1D23\tTruck\nCarlos Santos\tDEF4G56\tVan"} /></div><p className="text-xs text-muted-foreground">{linhas.length} linha(s) identificada(s).</p></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!baseId || !service.trim() || !linhas.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Adicionando…" : `Adicionar ${linhas.length} veículo(s)`}</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Adicionar veículos</DialogTitle><DialogDescription>Cole várias linhas do Excel. Formato simples: Motorista, Placa e Tipo.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Service da base</Label><Input value={service} onChange={(e) => setServiceManual(e.target.value)} disabled={!!servicePadrao} placeholder="Informe o código do Service" /></div><div><Label>Veículos</Label><Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={10} placeholder={"João Silva\tABC1D23\tTruck\nCarlos Santos\tDEF4G56\tVan"} /></div><p className="text-xs text-muted-foreground">{linhas.length} linha(s) identificada(s).</p></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!baseId || !service.trim() || !linhas.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Adicionando…" : `Adicionar ${linhas.length} veículo(s)`}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: { etapa: TransferenciaEtapa | null; onOpenChange: (open: boolean) => void; ids: string[]; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcosTransferenciaLote>>; onSuccess: () => void }) {
@@ -428,6 +463,37 @@ function MarcoLoteDialog({ etapa, onOpenChange, ids, registrarFn, onSuccess }: {
     ? "Chegada no Service em lote"
     : etapa === "saida_service"
       ? "Saída do Service em lote"
-      : "Chegada no XPT em lote";
+      : etapa === "chegada_xpt"
+        ? "Chegada no XPT em lote"
+        : "Saída do XPT em lote";
   return <Dialog open={!!etapa} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{titulo}</DialogTitle><DialogDescription>O mesmo horário será aplicado aos {ids.length} veículos selecionados. As evidências poderão ser anexadas depois.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Ex.: SP17" /></div>{etapa === "saida_service" && new Date(horario).getHours() >= 9 && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">Saída após 09:00: responsabilidade atribuída automaticamente ao Mercado Livre por atraso no carregamento/liberação.</div>}</div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={!localizacao.trim() || !ids.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? "Registrando…" : "Registrar em lote"}</Button></DialogFooter></DialogContent></Dialog>;
+}
+
+function MarcoIndividualDialog({ marco, onOpenChange, registrarFn, onSuccess }: { marco: { transferencia: TransferenciaDetalhe; etapa: TransferenciaEtapa } | null; onOpenChange: (open: boolean) => void; registrarFn: ReturnType<typeof useServerFn<typeof registrarMarcoTransferencia>>; onSuccess: () => void }) {
+  const [horario, setHorario] = useState(() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); });
+  const [localizacao, setLocalizacao] = useState("");
+  const [foto, setFoto] = useState<File | null>(null);
+  const [timemark, setTimemark] = useState("");
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!marco) throw new Error("Etapa não selecionada.");
+      let storagePath: string | undefined;
+      if (foto) {
+        if (foto.size > 10 * 1024 * 1024) throw new Error("A foto deve ter no máximo 10 MB.");
+        storagePath = caminhoEvidenciaTransferencia(marco.transferencia.base_id, marco.transferencia.id, marco.etapa, foto.name);
+        const { error } = await supabase.storage.from("transferencias-evidencias").upload(storagePath, foto, { upsert: false, contentType: foto.type });
+        if (error) throw new Error(error.message);
+      }
+      try {
+        return await registrarFn({ data: { transferenciaId: marco.transferencia.id, etapa: marco.etapa, ocorridoEm: new Date(horario).toISOString(), storagePath, timemarkUrl: timemark || undefined, horarioEvidencia: foto || timemark ? new Date(horario).toISOString() : undefined, localizacaoTexto: localizacao || undefined } });
+      } catch (error) {
+        if (storagePath) await supabase.storage.from("transferencias-evidencias").remove([storagePath]);
+        throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Etapa registrada."); setFoto(null); setTimemark(""); onSuccess(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar etapa."),
+  });
+  const titulo = marco ? ({ chegada_service: "Chegada no Service", saida_service: "Saída do Service", chegada_xpt: "Chegada no XPT", saida_xpt: "Saída do XPT" } as const)[marco.etapa] : "Registrar etapa";
+  return <Dialog open={!!marco} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{titulo}</DialogTitle><DialogDescription>{marco?.transferencia.motorista} · {marco?.transferencia.placa}. A foto é opcional nesta fase.</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Data e horário reais</Label><Input type="datetime-local" value={horario} onChange={(e) => setHorario(e.target.value)} /></div><div><Label>Localização</Label><Input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} placeholder="Service ou XPT" /></div><div><Label>Foto opcional</Label><Input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(e) => setFoto(e.target.files?.[0] ?? null)} /></div><div><Label>Link TimeMark opcional</Label><Input type="url" value={timemark} onChange={(e) => setTimemark(e.target.value)} placeholder="https://..." /></div></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={mutation.isPending} onClick={() => mutation.mutate()}><Camera className="w-4 h-4 mr-2" />{mutation.isPending ? "Registrando…" : "Registrar etapa"}</Button></DialogFooter></DialogContent></Dialog>;
 }

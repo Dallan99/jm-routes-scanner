@@ -6,12 +6,14 @@ export const TRANSFERENCIA_ETAPAS = [
   { value: "chegada_service", label: "Chegada no Service" },
   { value: "saida_service", label: "Saída do Service" },
   { value: "chegada_xpt", label: "Chegada no XPT" },
+  { value: "saida_xpt", label: "Saída do XPT" },
 ] as const;
 
 export const TRANSFERENCIA_STATUS = [
   { value: "aguardando_chegada_service", label: "Aguardando chegada no Service" },
   { value: "no_service", label: "No Service / carregando" },
   { value: "em_transito_xpt", label: "Em trânsito para o XPT" },
+  { value: "no_xpt", label: "No XPT" },
   { value: "concluida_no_prazo", label: "Concluída no prazo" },
   { value: "concluida_com_atraso", label: "Concluída com atraso" },
   { value: "pendente_evidencia", label: "Pendente de evidência" },
@@ -298,7 +300,7 @@ export const criarTransferencia = createServerFn({ method: "POST" })
 
 const marcoSchema = z.object({
   transferenciaId: z.string().uuid(),
-  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt"]),
+  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"]),
   ocorridoEm: z.string().datetime({ offset: true }),
   storagePath: z.string().max(500).optional(),
   timemarkUrl: z.string().url().max(1000).optional(),
@@ -313,7 +315,7 @@ export const registrarMarcoTransferencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => marcoSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { data: result, error } = await context.supabase.rpc("registrar_evento_transferencia", {
+    const { data: result, error } = await context.supabase.rpc("registrar_evento_transferencia_v2", {
       p_transferencia_id: data.transferenciaId,
       p_etapa: data.etapa,
       p_ocorrido_em: data.ocorridoEm,
@@ -331,7 +333,7 @@ export const registrarMarcoTransferencia = createServerFn({ method: "POST" })
 
 const evidenciaSchema = z.object({
   transferenciaId: z.string().uuid(),
-  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt"]),
+  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"]),
   storagePath: z.string().trim().min(1).max(500),
   timemarkUrl: z.string().url().max(1000),
   horarioEvidencia: z.string().datetime({ offset: true }).optional(),
@@ -342,7 +344,7 @@ export const anexarEvidenciaTransferencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => evidenciaSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { data: result, error } = await context.supabase.rpc("anexar_evidencia_transferencia", {
+    const { data: result, error } = await context.supabase.rpc("anexar_evidencia_transferencia_v2", {
       p_transferencia_id: data.transferenciaId,
       p_etapa: data.etapa,
       p_storage_path: data.storagePath,
@@ -403,6 +405,7 @@ export function proximaEtapa(eventos: TransferenciaEvento[]): TransferenciaEtapa
   if (!etapas.has("chegada_service")) return "chegada_service";
   if (!etapas.has("saida_service")) return "saida_service";
   if (!etapas.has("chegada_xpt")) return "chegada_xpt";
+  if (!etapas.has("saida_xpt")) return "saida_xpt";
   return null;
 }
 

@@ -251,7 +251,7 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
     };
     type EventoRow = {
       transferencia_id: string;
-      etapa: "chegada_service" | "saida_service" | "chegada_xpt";
+      etapa: "chegada_service" | "saida_service" | "chegada_xpt" | "saida_xpt";
       ocorrido_em: string;
     };
     type OcorrenciaRow = {
@@ -337,9 +337,10 @@ export const transferenciasGerencial = createServerFn({ method: "POST" })
       const chegadaService = lista.find((e) => e.etapa === "chegada_service")?.ocorrido_em;
       const saidaService = lista.find((e) => e.etapa === "saida_service")?.ocorrido_em;
       const chegadaXpt = lista.find((e) => e.etapa === "chegada_xpt")?.ocorrido_em;
+      const saidaXpt = lista.find((e) => e.etapa === "saida_xpt")?.ocorrido_em;
       return {
         ...t,
-        concluida: !!chegadaXpt,
+        concluida: !!saidaXpt,
         permanencia: minutosEntre(chegadaService, saidaService),
         deslocamento: minutosEntre(saidaService, chegadaXpt),
       };

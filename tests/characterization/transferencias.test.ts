@@ -19,6 +19,14 @@ const gerencialSource = readFileSync(
   resolve(process.cwd(), "src/lib/gerencial.functions.ts"),
   "utf8",
 );
+const saidaXptMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20260717110000_transferencias_saida_xpt.sql"),
+  "utf8",
+);
+const pageSource = readFileSync(
+  resolve(process.cwd(), "src/routes/_authenticated/transferencias.tsx"),
+  "utf8",
+);
 
 function evento(etapa: TransferenciaEvento["etapa"]): TransferenciaEvento {
   return {
@@ -32,13 +40,12 @@ function evento(etapa: TransferenciaEvento["etapa"]): TransferenciaEvento {
 }
 
 describe("Transferências — fluxo operacional", () => {
-  it("exige os três marcos na ordem Service → Service → XPT", () => {
+  it("exige os quatro marcos na ordem Service → Service → XPT → XPT", () => {
     expect(proximaEtapa([])).toBe("chegada_service");
     expect(proximaEtapa([evento("chegada_service")])).toBe("saida_service");
     expect(proximaEtapa([evento("chegada_service"), evento("saida_service")])).toBe("chegada_xpt");
-    expect(
-      proximaEtapa([evento("chegada_service"), evento("saida_service"), evento("chegada_xpt")]),
-    ).toBeNull();
+    expect(proximaEtapa([evento("chegada_service"), evento("saida_service"), evento("chegada_xpt")])).toBe("saida_xpt");
+    expect(proximaEtapa([evento("chegada_service"), evento("saida_service"), evento("chegada_xpt"), evento("saida_xpt")])).toBeNull();
   });
 
   it("cria caminho privado segmentado por base e transferência", () => {
@@ -54,13 +61,37 @@ describe("Transferências — fluxo operacional", () => {
   });
 
   it("permite registrar os três marcos também pela operação em lote", () => {
-    expect(loteSource).toContain('z.enum(["chegada_service", "saida_service", "chegada_xpt"])');
+    expect(loteSource).toContain('z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"])');
   });
 
   it("mantém os indicadores gerenciais separados nas faixas de 60 e 80 minutos", () => {
     expect(gerencialSource).toContain("t.deslocamento <= 60");
     expect(gerencialSource).toContain("t.deslocamento > 60 && t.deslocamento <= 80");
     expect(gerencialSource).toContain("t.deslocamento > 80");
+  });
+});
+
+describe("Transferências — saída do XPT", () => {
+  it("adiciona a quarta etapa sem remover tabelas ou dados", () => {
+    expect(saidaXptMigration).toContain("'chegada_xpt', 'saida_xpt'");
+    expect(saidaXptMigration).toContain("'no_xpt'");
+    expect(saidaXptMigration).toContain("registrar_evento_transferencia_v2");
+    expect(saidaXptMigration).not.toMatch(/\bDROP\s+TABLE\b/i);
+    expect(saidaXptMigration).not.toMatch(/\bTRUNCATE\b/i);
+    expect(saidaXptMigration).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+
+  it("mantém evidência opcional e conclui somente na saída do XPT", () => {
+    expect(saidaXptMigration).toContain("IF v_evidencia THEN");
+    expect(saidaXptMigration).toContain("WHEN p_etapa = 'saida_xpt'");
+    expect(saidaXptMigration).toContain("IF v_etapa = 'chegada_xpt' THEN RETURN 'no_xpt'");
+  });
+
+  it("vincula as quatro bases aos Services definidos", () => {
+    expect(pageSource).toContain('if (base.includes("ibiuna")) return "SSP20";');
+    expect(pageSource).toContain('if (base.includes("guaruja")) return "SSP15";');
+    expect(pageSource).toContain('if (base.includes("embu")) return "SSP34";');
+    expect(pageSource).toContain('if (base.includes("franco")) return "SSP25";');
   });
 });
 

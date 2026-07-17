@@ -8,19 +8,27 @@ Controlar a viagem de transferência entre o Service e a base XPT diretamente no
 
 1. **Chegada no Service** — SLA corporativo inicial: até 07:00.
 2. **Saída do Service** — SLA corporativo inicial: até 09:00.
-3. **Chegada no XPT** — SLA corporativo inicial: até 60 minutos após a saída do Service.
+3. **Chegada no XPT** — SLA operacional: até 80 minutos após a saída do Service.
+4. **Saída do XPT** — encerra a transferência após a descarga.
 
 Os marcos só podem ser registrados nessa ordem. O banco impede etapa duplicada e horários cronologicamente incompatíveis.
 
 ## Evidência
 
-Cada etapa deve conter:
+Cada etapa pode conter:
 
 - foto real do caminhão no local;
 - link HTTPS ativo do TimeMark;
 - horário e localização informados.
 
-É permitido registrar o horário sem a evidência completa para não interromper a operação. Nesse caso, a transferência recebe o status **Pendente de evidência** e não é tratada como plenamente regular até a complementação. As fotos ficam em bucket privado e são exibidas por URL temporária assinada.
+Nesta primeira versão, foto e TimeMark são opcionais e nunca bloqueiam o registro do marco. As fotos ficam em bucket privado e são exibidas por URL temporária assinada.
+
+## Services por base
+
+- Ibiúna — SSP20;
+- Guarujá — SSP15;
+- Embu — SSP34;
+- Franco da Rocha — SSP25.
 
 ## Responsabilidade pelo atraso
 

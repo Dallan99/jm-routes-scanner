@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 const dataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const etapaSchema = z.enum(["chegada_service", "saida_service", "chegada_xpt"]);
+const etapaSchema = z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"]);
 
 const linhaCadastroSchema = z.object({
   service: z.string().trim().min(2).max(120),
@@ -90,7 +90,7 @@ export const registrarMarcosTransferenciaLote = createServerFn({ method: "POST" 
         ? `${transferencia.codigo} · ${transferencia.placa} · ${transferencia.motorista}`
         : transferenciaId;
 
-      const { error } = await context.supabase.rpc("registrar_evento_transferencia", {
+      const { error } = await context.supabase.rpc("registrar_evento_transferencia_v2", {
         p_transferencia_id: transferenciaId,
         p_etapa: data.etapa,
         p_ocorrido_em: data.ocorridoEm,
