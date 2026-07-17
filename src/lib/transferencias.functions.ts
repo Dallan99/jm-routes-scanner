@@ -351,6 +351,92 @@ export const registrarMarcoTransferencia = createServerFn({ method: "POST" })
     return legado;
   });
 
+const corrigirMarcoSchema = z.object({
+  transferenciaId: z.string().uuid(),
+  etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"]),
+  ocorridoEm: z.string().datetime({ offset: true }),
+  localizacaoTexto: z.string().trim().max(300).optional(),
+});
+
+export const corrigirMarcoTransferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => corrigirMarcoSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: transferencia, error: transferenciaError } = await context.supabase
+      .from("transferencias")
+      .select("id, base_id, data_operacional, service, finalizada_em")
+      .eq("id", data.transferenciaId)
+      .single();
+    if (transferenciaError) throw new Error(transferenciaError.message);
+
+    const { data: eventos, error: eventosError } = await context.supabase
+      .from("transferencia_eventos")
+      .select("id, etapa, ocorrido_em, localizacao_texto, minutos_atraso")
+      .eq("transferencia_id", data.transferenciaId)
+      .order("ocorrido_em", { ascending: true });
+    if (eventosError) throw new Error(eventosError.message);
+
+    const ordem: TransferenciaEtapa[] = ["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"];
+    const indice = ordem.indexOf(data.etapa);
+    const evento = eventos?.find((item) => item.etapa === data.etapa);
+    if (!evento) throw new Error("Etapa não encontrada para edição.");
+    const anterior = indice > 0 ? eventos?.find((item) => item.etapa === ordem[indice - 1]) : null;
+    const seguinte = indice < ordem.length - 1 ? eventos?.find((item) => item.etapa === ordem[indice + 1]) : null;
+    const novoHorario = Date.parse(data.ocorridoEm);
+    if (anterior && novoHorario < Date.parse(anterior.ocorrido_em)) throw new Error("O horário não pode ser anterior à etapa precedente.");
+    if (seguinte && novoHorario > Date.parse(seguinte.ocorrido_em)) throw new Error("O horário não pode ser posterior à etapa seguinte.");
+
+    const { data: sla } = await context.supabase
+      .from("transferencia_slas")
+      .select("chegada_service_limite, saida_service_limite, transito_max_minutos")
+      .eq("base_id", transferencia.base_id)
+      .ilike("service", transferencia.service)
+      .eq("ativo", true)
+      .maybeSingle();
+    const limiteChegada = sla?.chegada_service_limite ?? "07:00:00";
+    const limiteSaida = sla?.saida_service_limite ?? "09:00:00";
+    let referencia = novoHorario;
+    if (data.etapa === "chegada_service") referencia = Date.parse(`${transferencia.data_operacional}T${limiteChegada}-03:00`);
+    if (data.etapa === "saida_service") referencia = Date.parse(`${transferencia.data_operacional}T${limiteSaida}-03:00`);
+    if (data.etapa === "chegada_xpt" && anterior) referencia = Date.parse(anterior.ocorrido_em) + (sla?.transito_max_minutos ?? 80) * 60_000;
+    const minutosAtraso = Math.max(0, Math.ceil((novoHorario - referencia) / 60_000));
+
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error: updateError } = await supabaseAdmin
+        .from("transferencia_eventos")
+        .update({ ocorrido_em: data.ocorridoEm, localizacao_texto: data.localizacaoTexto || null, minutos_atraso: minutosAtraso })
+        .eq("id", evento.id);
+      if (updateError) throw new Error(updateError.message);
+
+      const { data: ocorrencia } = await supabaseAdmin
+        .from("transferencia_ocorrencias")
+        .select("id")
+        .eq("evento_id", evento.id)
+        .maybeSingle();
+      if (ocorrencia) {
+        await supabaseAdmin.from("transferencia_ocorrencias").update({ minutos_atraso: minutosAtraso }).eq("id", ocorrencia.id);
+      }
+
+      if ((data.etapa === "saida_xpt" || (data.etapa === "chegada_xpt" && !seguinte)) && transferencia.finalizada_em) {
+        await supabaseAdmin.from("transferencias").update({ finalizada_em: data.ocorridoEm }).eq("id", transferencia.id);
+      }
+
+      await supabaseAdmin.from("audit_logs").insert({
+        user_id: context.userId,
+        acao: "transferencia.evento.corrigir",
+        entidade: "transferencia_evento",
+        entidade_id: evento.id,
+        detalhes: { etapa: data.etapa, horario_anterior: evento.ocorrido_em, horario_novo: data.ocorridoEm, minutos_atraso: minutosAtraso },
+      });
+      return { id: evento.id, ocorrido_em: data.ocorridoEm, minutos_atraso: minutosAtraso };
+    } catch (error) {
+      const mensagem = error instanceof Error ? error.message : "Erro ao corrigir horário.";
+      if (mensagem.includes("SUPABASE_SERVICE_ROLE_KEY")) throw new Error("A edição de horário precisa ser habilitada no ambiente da Vercel.");
+      throw error;
+    }
+  });
+
 const evidenciaSchema = z.object({
   transferenciaId: z.string().uuid(),
   etapa: z.enum(["chegada_service", "saida_service", "chegada_xpt", "saida_xpt"]),
