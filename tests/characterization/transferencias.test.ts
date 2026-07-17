@@ -105,7 +105,10 @@ describe("Transferências — operação inline", () => {
 
   it("mantém edição, exclusão, conclusão e marcos dentro da tabela", () => {
     expect(pageSource).toContain("EditarRotaRow");
-    expect(pageSource).toContain("MarcoInlineRow");
+    expect(pageSource).toContain("EtapaFormCells");
+    expect(pageSource).toContain("Link TimeMark ou evidência");
+    expect(pageSource).toContain('type="file"');
+    expect(pageSource).toContain("Salvar etapa");
     expect(pageSource).toContain('title="Excluir rota"');
     expect(pageSource).toContain('title={proxima === "saida_xpt" ? "Concluir transferência"');
   });
