@@ -116,8 +116,10 @@ describe("Transferências — operação inline", () => {
     expect(pageSource).toContain("Link TimeMark ou evidência");
     expect(pageSource).toContain('type="file"');
     expect(pageSource).toContain("Salvar etapa");
-    expect(pageSource).toContain("Editar horário");
+    expect(pageSource).toContain("Editar etapa");
     expect(pageSource).toContain("Salvar correção");
+    expect(pageSource).toContain("timemarkUrl: timemark");
+    expect(pageSource).toContain("storagePath");
     expect(pageSource).toContain('title="Excluir rota"');
     expect(pageSource).toContain('title={proxima === "saida_xpt" ? "Concluir transferência"');
   });
@@ -129,11 +131,13 @@ describe("Transferências — operação inline", () => {
     expect(pageSource).toContain("deslocamento até o XPT continua registrado como dado complementar");
   });
 
-  it("audita a correção do horário e impede quebra da ordem cronológica", () => {
+  it("audita a correção da etapa e impede quebra da ordem cronológica", () => {
     const funcoes = readFileSync(resolve(process.cwd(), "src/lib/transferencias.functions.ts"), "utf8");
     expect(funcoes).toContain('acao: "transferencia.evento.corrigir"');
     expect(funcoes).toContain("O horário não pode ser anterior à etapa precedente");
     expect(funcoes).toContain("O horário não pode ser posterior à etapa seguinte");
+    expect(funcoes).toContain("foto_substituida");
+    expect(funcoes).toContain("link_corrigido");
   });
 
   it("edita pela política de acesso existente e mantém auditoria", () => {
