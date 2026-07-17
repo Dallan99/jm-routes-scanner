@@ -327,8 +327,28 @@ export const registrarMarcoTransferencia = createServerFn({ method: "POST" })
       p_responsabilidade: data.responsabilidade || null,
       p_observacao: data.observacao || null,
     });
-    if (error) throw new Error(error.message);
-    return result;
+    if (!error) return result;
+
+    const v2Ausente = error.code === "PGRST202" || error.message.includes("registrar_evento_transferencia_v2");
+    if (!v2Ausente) throw new Error(error.message);
+    if (data.etapa === "saida_xpt") {
+      throw new Error("A etapa Saída do XPT aguarda a atualização do banco. As três etapas anteriores continuam disponíveis.");
+    }
+
+    const { data: legado, error: legadoError } = await context.supabase.rpc("registrar_evento_transferencia", {
+      p_transferencia_id: data.transferenciaId,
+      p_etapa: data.etapa,
+      p_ocorrido_em: data.ocorridoEm,
+      p_storage_path: data.storagePath || null,
+      p_timemark_url: data.timemarkUrl || null,
+      p_horario_evidencia: data.horarioEvidencia || null,
+      p_localizacao_texto: data.localizacaoTexto || null,
+      p_motivo_codigo: data.motivoCodigo || "OUTRO",
+      p_responsabilidade: data.responsabilidade || "EM_ANALISE",
+      p_observacao: data.observacao || "Pendente de classificação operacional.",
+    });
+    if (legadoError) throw new Error(legadoError.message);
+    return legado;
   });
 
 const evidenciaSchema = z.object({
