@@ -365,6 +365,35 @@ export const corrigirMarcoTransferencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => corrigirMarcoSchema.parse(input))
   .handler(async ({ data, context }) => {
+    const { data: correcaoRpc, error: correcaoRpcError } = await (context.supabase as any).rpc(
+      "corrigir_etapa_transferencia",
+      {
+        p_transferencia_id: data.transferenciaId,
+        p_etapa: data.etapa,
+        p_ocorrido_em: data.ocorridoEm,
+        p_localizacao_texto: data.localizacaoTexto || null,
+        p_storage_path: data.storagePath || null,
+        p_timemark_url: data.timemarkUrl ?? null,
+        p_horario_evidencia: data.horarioEvidencia || null,
+        p_editar_evidencia: data.storagePath !== undefined || data.timemarkUrl !== undefined,
+      },
+    );
+    if (!correcaoRpcError) return correcaoRpc;
+
+    const rpcAusente = correcaoRpcError.code === "PGRST202"
+      || correcaoRpcError.message.includes("corrigir_etapa_transferencia");
+    if (!rpcAusente) {
+      if (correcaoRpcError.message.includes("horario_anterior_etapa_precedente")) {
+        throw new Error("O horário não pode ser anterior à etapa precedente.");
+      }
+      if (correcaoRpcError.message.includes("horario_posterior_etapa_seguinte")) {
+        throw new Error("O horário não pode ser posterior à etapa seguinte.");
+      }
+      throw new Error(correcaoRpcError.message);
+    }
+
+    // Compatibilidade temporária para ambientes que ainda não aplicaram a
+    // migração da RPC acima. Pode usar uma das duas nomenclaturas de chave.
     const { data: transferencia, error: transferenciaError } = await context.supabase
       .from("transferencias")
       .select("id, base_id, data_operacional, service, finalizada_em")
