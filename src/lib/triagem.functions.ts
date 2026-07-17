@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { resumirRotasTriagem, rotaEfetivaTriagem } from "./triagem-domain";
+import { normalizarCodigoTriagem, resumirRotasTriagem, rotaEfetivaTriagem } from "./triagem-domain";
 
 const bipSchema = z.object({
   codigo: z
@@ -9,7 +9,7 @@ const bipSchema = z.object({
     .trim()
     .min(3)
     .max(120)
-    .transform((s) => s.replace(/[^0-9A-Za-z]/g, "")),
+    .transform(normalizarCodigoTriagem),
   baseId: z.string().uuid(),
   dataOperacional: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   tempoDesdeUltimaMs: z.number().int().nonnegative().optional(),
@@ -267,7 +267,7 @@ export const biparTriagem = createServerFn({ method: "POST" })
           : resultado === "rota_divergente"
             ? "outra_rota"
             : resultado;
-      await supabase.from("recebimentos").insert({
+      const registro = supabase.from("recebimentos").insert({
         codigo_bipado: data.codigo,
         rota_id: null,
         volume_id: null,
@@ -280,12 +280,13 @@ export const biparTriagem = createServerFn({ method: "POST" })
         tempo_desde_ultima_ms: tempo,
         stage: "triagem",
       });
-      await registrarAuditInterno(supabase, userId, {
+      const auditoria = registrarAuditInterno(supabase, userId, {
         acao: `triagem.${resultado}`,
         entidade: "escala",
         entidade_id: escalaId,
         detalhes: { codigo: data.codigo, mensagem, base_id: baseId, dia: data.dataOperacional },
       });
+      await Promise.all([registro, auditoria]);
     }
 
     // 1) Importação ativa da Base + Dia
